@@ -1,0 +1,14 @@
+1. 
+cd Gello/gello_software
+
+2.
+source .venv/bin/activate
+
+3.simulation
+python experiments/launch_yaml.py --left-config-path configs/yam_auto_generated_sim.yaml
+
+4.
+./a1_x_joint.bash
+
+5.
+python /home/dungeon_master/conrft/Gello/gello_software/experiments/launch_yaml.py --left-config-path configs/yam_A1_X.yaml

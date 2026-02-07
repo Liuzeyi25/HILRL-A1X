@@ -1,0 +1,58 @@
+!!obs ee_pos_rot_gripper: [ 2.79676292e-01 -6.52256957e-03  1.70535556e-01  2.11722491e+00
+  1.54040958e+00  2.08446664e+00  9.74738741e+01]
+!!joint_positions: [-3.29787234e-02  1.92085106e+00 -1.17851064e+00  8.44255319e-01
+  2.59574468e-02 -4.25531915e-04  9.74738741e+01]
+Traceback (most recent call last):
+  File "/home/dungeon_master/conrft/examples/verify_action_space.py", line 214, in <module>
+    main()
+  File "/home/dungeon_master/conrft/examples/verify_action_space.py", line 128, in main
+    next_obs, reward, done, truncated, info = env.step(action)
+  File "/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/wrapper.py", line 131, in step
+    observation, reward, terminated, truncated, info = self.env.step(action)
+  File "/home/dungeon_master/conrft/serl_launcher/serl_launcher/wrappers/chunking.py", line 70, in step
+    obs, reward, done, trunc, info = self.env.step(action[i], *args)
+  File "/home/dungeon_master/miniconda3/envs/conrft/lib/python3.10/site-packages/gymnasium/core.py", line 522, in step
+    observation, reward, terminated, truncated, info = self.env.step(action)
+  File "/home/dungeon_master/conrft/serl_robot_infra/franka_env/envs/wrappers.py", line 886, in step
+    return self._threaded_step(action)
+  File "/home/dungeon_master/conrft/serl_robot_infra/franka_env/envs/wrappers.py", line 983, in _threaded_step
+    rew = env.compute_reward(obs)
+  File "/home/dungeon_master/conrft/serl_robot_infra/franka_env/envs/a1x_env.py", line 200, in compute_reward
+    delta = np.abs(current_joints - self._TARGET_JOINT_STATE)
+ValueError: operands could not be broadcast together with shapes (7,) (8,) 
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.2ms | 发送: 0.7ms | 总计: 1.1ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.2ms | 发送: 2.2ms | 总计: 2.7ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.3ms | 发送: 0.9ms | 总计: 1.4ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.2ms | 总计: 1.5ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.4ms | 总计: 1.7ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.3ms | 发送: 1.2ms | 总计: 1.7ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.8ms | 总计: 2.1ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.3ms | 发送: 1.1ms | 总计: 1.6ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.2ms | 映射: 0.3ms | 发送: 1.3ms | 总计: 1.8ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 0.9ms | 总计: 1.1ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.2ms | 总计: 1.5ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.4ms | 总计: 1.7ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.0ms | 总计: 1.3ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.3ms | 总计: 1.7ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.9ms | 总计: 2.2ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.3ms | 发送: 0.9ms | 总计: 1.2ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.1ms | 总计: 1.4ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.0ms | 总计: 1.4ms
+   🔄 [诊断] 频率: ~30 Hz | Gello读取: 0.1ms | 映射: 0.2ms | 发送: 1.0ms | 总计: 1.2ms
+
+   Traceback (most recent call last):
+  File "/home/dungeon_master/conrft/examples/record_demos_octo_manual.py", line 15, in <module>
+    from experiments.mappings import CONFIG_MAPPING
+  File "/home/dungeon_master/conrft/examples/experiments/mappings.py", line 2, in <module>
+    from examples.experiments.a1x_pick_banana.config import TrainConfig as A1XDemoTrainConfig
+ModuleNotFoundError: No module named 'examples.experiments'
+ Episode 1 成功! (手动标记)
+                             W0130 19:49:04.387394 127876884873728 octo_model.py:583] 'observations' is missing items compared to example_batch: {'pad_mask_dict/image_primary', 'task_completed', 'pad_mask_dict/image_wrist', 'timestep', 'pad_mask_dict/timestep'}
+                                                                                                            warning, comm failed: -3001
+                                                                                                                                       warning, comm failed: -3002
+         W0130 19:49:05.164370 127876884873728 tokenizers.py:25] No pad_mask_dict found. Nothing will be masked.
+                                                                                                                warning, comm failed: -3002
+                                                                                                                                           W0130 19:49:05.836017 127876884873728 tokenizers.py:25] No pad_mask_dict found. Nothing will be masked.
+                                                                                         I0130 19:49:05.842603 127876884873728 octo_module.py:219] repeating task tokens at each timestep to perform cross-modal attention
+
+                                                                 🎯 手动设置成功! Manual success triggered!
