@@ -169,3 +169,5 @@ examples/experiments/a1x_pick_banana/demo_data/
 /examples/experiments/a1x_pick_banana/conrft/
 
 .conda
+
+/home/dungeon_master/conrft/examples/test_script/src/serl-launcher/sac_ckpt_w_state
