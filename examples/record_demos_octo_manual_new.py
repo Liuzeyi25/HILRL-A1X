@@ -24,6 +24,58 @@ flags.DEFINE_integer("successes_needed", 20,
                      "Number of successful demos to collect.")
 flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
 flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
+flags.DEFINE_string(
+    "demo_data_subdir", "20260208", 
+    "Subdirectory name under demo_data for saving trajectories.")
+
+
+def reorganize_transitions_to_chunks(transitions, chunk_size):
+    """
+    📦 离线重组transitions为action chunks
+    
+    输入: [(s0,a0), (s1,a1), (s2,a2), ...]
+    输出: [(s0,[a0,a1,a2,a3]), (s1,[a1,a2,a3,a4]), ...]
+    
+    Args:
+        transitions: List of single-step transitions (actions可能是单步或chunk)
+        chunk_size: Action chunk size (e.g., 4)
+    
+    Returns:
+        List of chunked transitions
+    """
+    if len(transitions) == 0:
+        return []
+    
+    chunked_transitions = []
+    
+    # 获取action_dim（从第一个单步动作中获取）用于对齐dtype
+    first_action = transitions[0]['actions']
+    if first_action.ndim == 1:
+        action_dim = first_action.shape[0]
+    else:  # ndim == 2, 已经是chunk
+        action_dim = first_action.shape[1]
+    
+    for i in range(len(transitions)):
+        trans = transitions[i].copy()
+        
+        # 收集当前及未来的actions: [a_i, a_{i+1}, ..., a_{i+chunk_size-1}]
+        action_chunk = []
+        for j in range(chunk_size):
+            if i + j < len(transitions):
+                action = transitions[i + j]['actions']
+                # 如果是单步动作，直接添加；如果是chunk，取第一步
+                if action.ndim == 1:
+                    action_chunk.append(action)
+            else:
+                # Episode结束，用单步的0填充
+                action_chunk.append(np.zeros(action_dim, dtype=first_action.dtype))
+        
+        # 更新action为chunk
+        trans['actions'] = np.array(action_chunk)  # Shape: [chunk_size, action_dim]
+        
+        chunked_transitions.append(trans)
+    
+    return chunked_transitions
 
 
 def print_instructions():
@@ -55,9 +107,27 @@ def print_instructions():
 def main(_):
     assert FLAGS.exp_name in CONFIG_MAPPING, 'Experiment folder not found.'
     config = CONFIG_MAPPING[FLAGS.exp_name]()
+    
+    # 🎯 关键修复：保存原始 action_chunk_size，然后临时禁用
+    original_chunk_size = config.action_chunk_size
+    print(f"⚙️  配置: 原始 action_chunk_size = {original_chunk_size}")
+    print(f"📝 采集模式: 禁用 chunking (采集单步数据)")
+    print(f"📦 离线处理: 将在采集完成后重组为 chunk_size={original_chunk_size}")
+    
+    config.action_chunk_size = None  # 采集时不使用 chunking
+    
+    # 🎯 创建环境：使用数据采集模式（Reset时同步，按空格不同步）
     env = config.get_environment(
-        fake_env=False, save_video=False, classifier=False, stack_obs_num=2)
-
+        fake_env=False, 
+        save_video=False, 
+        classifier=False, 
+        stack_obs_num=2,
+        data_collection_mode=True  # ✅ 数据采集模式
+    )
+    
+    # 恢复原始配置（用于后续离线重组）
+    config.action_chunk_size = original_chunk_size
+    
     print("加载预训练 Octo 模型...", config.octo_path)
     model = OctoModel.load_pretrained(config.octo_path)
     tasks = model.create_tasks(texts=[config.task_desc])
@@ -79,7 +149,7 @@ def main(_):
         episode_count = 0
 
         # 使用实验目录下的 demo_data 文件夹
-        demo_data_dir = f"./examples/experiments/{FLAGS.exp_name}/demo_data/20260207"
+        demo_data_dir = f"./examples/experiments/{FLAGS.exp_name}/demo_data/{FLAGS.demo_data_subdir}"
         if not os.path.exists(demo_data_dir):
             os.makedirs(demo_data_dir)
             print(f"📁 创建目录: {demo_data_dir}")
@@ -87,9 +157,10 @@ def main(_):
         print(f"📁 数据采集完成后将统一保存到: {demo_data_dir}/\n")
 
         while success_count < success_needed:
-            # 执行 env.step()（wrapper 会处理手动成功）
-            actions = np.zeros(env.action_space.sample().shape)
-            next_obs, rew, done, truncated, info = env.step(actions)
+            # 🎯 执行 env.step()（采集单步数据，不使用 chunking）
+            # 传入零动作（让 Gello 干预提供真实动作）
+            dummy_action = np.zeros(7)  # 单步动作 [7维]
+            next_obs, rew, done, truncated, info = env.step(dummy_action)
             returns += rew
             
             # 🔍 调试：打印奖励和 done 状态
@@ -253,10 +324,37 @@ def main(_):
         
 
         print("\n" + "="*60)
-        print("开始批量处理 embeddings...")
+        print("开始批量处理数据...")
         print("="*60)
         print(f"📊 共收集 {len(all_trajectories)} 条成功轨迹")
         
+        # 🔧 步骤1: Action Chunk 重组（如果启用）
+        # 使用 original_chunk_size 而不是 config.action_chunk_size（已被设为 None）
+        if original_chunk_size is not None and original_chunk_size > 0:
+            print(f"\n📦 步骤1: 重组为 Action Chunks (chunk_size={original_chunk_size})")
+            chunk_pbar = tqdm(total=len(all_trajectories), desc="重组轨迹")
+            
+            chunked_trajectories = []
+            for idx, trajectory in enumerate(all_trajectories):
+                original_len = len(trajectory)
+                chunked_traj = reorganize_transitions_to_chunks(trajectory, original_chunk_size)
+                chunked_trajectories.append(chunked_traj)
+                
+                # 验证重组结果
+                if idx == 0:  # 只打印第一条轨迹的详细信息
+                    first_action = chunked_traj[0]['actions']
+                    print(f"   ✅ 示例轨迹: 长度={original_len} -> {len(chunked_traj)}, "
+                          f"action shape: {first_action.shape}")
+                
+                chunk_pbar.update(1)
+            
+            chunk_pbar.close()
+            all_trajectories = chunked_trajectories
+            print(f"   ✅ Action Chunk 重组完成\n")
+        else:
+            print(f"   ⏭️  跳过 Action Chunk 重组 (chunk_size={original_chunk_size})\n")
+        
+        # 🔧 步骤2: 添加 embeddings
         # 计算总帧数
         total_frames = sum(len(traj) for traj in all_trajectories)
         print(f"📊 总帧数: {total_frames} 帧")
@@ -264,7 +362,7 @@ def main(_):
         
         # 批量处理每条轨迹
         transitions = []
-        process_pbar = tqdm(total=len(all_trajectories), desc="处理轨迹")
+        process_pbar = tqdm(total=len(all_trajectories), desc="添加embeddings")
         
         for idx, trajectory in enumerate(all_trajectories):
             trajectory_num = idx + 1
@@ -272,15 +370,22 @@ def main(_):
             
             print(f"\n🔄 处理轨迹 {trajectory_num}/{len(all_trajectories)} (长度: {traj_len} 帧)...")
             
+            # 打印action shape信息
+            sample_action = trajectory[0]['actions']
+            action_shape_str = f"shape={sample_action.shape}"
+            if sample_action.ndim == 2:
+                action_shape_str += f" (chunked)"
+            print(f"   📊 动作格式: {action_shape_str}")
+            
             # 添加 embeddings
-            print(f"   📊 步骤1: 添加embeddings (预计 {traj_len * 2:.0f} 秒)...")
+            print(f"   🔄 添加embeddings (预计 {traj_len * 2:.0f} 秒)...")
             start_time = time.time()
             trajectory = add_embeddings_to_trajectory(trajectory, model, tasks=tasks)
             elapsed = time.time() - start_time
             print(f"   ✅ embeddings完成，耗时 {elapsed:.1f} 秒")
             
             # 添加 next embeddings
-            print(f"   📊 步骤2: 添加next embeddings...")
+            print(f"   🔄 添加next embeddings...")
             trajectory = add_next_embeddings_to_trajectory(trajectory)
             print(f"   ✅ next embeddings完成")
             
@@ -308,6 +413,10 @@ def main(_):
         print("="*60)
         print(f"   📊 总计: {success_needed} 个成功 episode")
         print(f"   📦 总transitions数: {len(transitions)}")
+        if original_chunk_size is not None and original_chunk_size > 0:
+            print(f"   🎯 Action format: Chunked (size={original_chunk_size})")
+        else:
+            print(f"   🎯 Action format: Single-step")
         print(f"   📁 保存目录: {demo_data_dir}")
         print(f"   📄 共 {len(all_trajectories)} 个轨迹文件")
         print("="*60)

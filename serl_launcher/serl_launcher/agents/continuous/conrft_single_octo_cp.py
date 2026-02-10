@@ -39,9 +39,20 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         """
         Forward pass for critic network.
         Pass grad_params to use non-default parameters (e.g. for gradients).
+        
+        🚀 支持 action chunking: 如果 actions 是 2D (chunk_size, action_dim_per_step)，
+        会自动 flatten 为 1D
         """
         if train:
             assert rng is not None, "Must specify rng when training"
+        
+        # 🚀 Flatten chunked actions for critic (if needed)
+        # Critic 期望 actions 是 (batch_size, action_dim)
+        # 如果 actions 是 (batch_size, chunk_size, action_dim_per_step), flatten 为 (batch_size, chunk_size*action_dim_per_step)
+        if actions.ndim == 3:  # (batch, chunk_size, action_dim_per_step)
+            batch_size = actions.shape[0]
+            actions = actions.reshape(batch_size, -1)  # (batch, chunk_size*action_dim_per_step)
+        
         return self.state.apply_fn(
             {"params": grad_params or self.state.params},
             observations,
@@ -61,6 +72,8 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         """
         Forward pass for target critic network.
         Pass grad_params to use non-default parameters (e.g. for gradients).
+        
+        🚀 支持 action chunking
         """
         return self.forward_critic(
             observations,
@@ -632,7 +645,15 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
 
         batch_size = batch["rewards"].shape[0]
         chex.assert_tree_shape_prefix(batch, (batch_size,))
-        chex.assert_shape(batch["actions"], (batch_size, 7))
+        
+        # 🚀 支持 action chunking 的 shape 检查
+        chunk_size = self.config.get("action_chunk_size", 1)
+        action_dim_per_step = self.config.get("action_dim_per_step", 7)
+        if chunk_size > 1:
+            expected_action_shape = (batch_size, chunk_size, action_dim_per_step)
+        else:
+            expected_action_shape = (batch_size, action_dim_per_step)
+        chex.assert_shape(batch["actions"], expected_action_shape)
 
         if self.config["image_keys"][0] not in batch["next_observations"]:
             batch = _unpack(batch)
@@ -682,14 +703,33 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         """
         Sample actions from the policy network, **using an external RNG** (or approximating the argmax by the mode).
         The internal RNG will not be updated.
+        
+        🚀 支持 action chunking:
+        - 如果 action_chunk_size > 1, 输出 shape 为 (chunk_size, action_dim_per_step)
+        - 如果 action_chunk_size == 1, 输出 shape 为 (action_dim_per_step,)
         """
 
         actions, action_embeddings = self.forward_policy(
             tasks, observations, rng=seed, train=False)
-        actions = jnp.squeeze(actions, axis=0)
+        actions = jnp.squeeze(actions, axis=0)  # Remove batch dim: (batch=1, action_dim) -> (action_dim,)
 
-        if self.config["fix_gripper"]:  # add gripper action, default to 0
-            actions = jnp.concatenate([actions, jnp.array([0])])
+        # 🚀 Reshape actions for chunking
+        chunk_size = self.config.get("action_chunk_size", 1)
+        action_dim_per_step = self.config.get("action_dim_per_step", actions.shape[-1])
+        
+        if chunk_size > 1:
+            # Action chunking 模式: 将扁平的 action 重新 reshape 为 (chunk_size, action_dim_per_step)
+            actions = jnp.reshape(actions, (chunk_size, action_dim_per_step))
+        
+        # 处理 fix_gripper 情况
+        if self.config["fix_gripper"]:
+            if chunk_size > 1:
+                # 为每个 chunk 添加 gripper action (默认 0)
+                gripper_actions = jnp.zeros((chunk_size, 1))
+                actions = jnp.concatenate([actions, gripper_actions], axis=-1)
+            else:
+                # 单个 action 添加 gripper
+                actions = jnp.concatenate([actions, jnp.array([0])])
 
         return actions, action_embeddings
 
@@ -772,12 +812,22 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
             q_weight=q_weight,
         )
 
-        # Config
-        action_dim = actions.shape[-1] - \
-            1 if fix_gripper else actions.shape[-1]
+        # 🚀 Config - 支持 action chunking
+        # 检测 actions 的 shape 来判断是否使用 action chunking
+        if actions.ndim == 2:
+            # Action chunking: (chunk_size, action_dim_per_step)
+            action_chunk_size = actions.shape[0]
+            action_dim_per_step = actions.shape[-1] - 1 if fix_gripper else actions.shape[-1]
+            action_dim = action_chunk_size * action_dim_per_step
+        else:  
+            # 传统模式: (action_dim,)
+            action_chunk_size = 1
+            action_dim_per_step = actions.shape[-1] - 1 if fix_gripper else actions.shape[-1]
+            action_dim = action_dim_per_step
+        
         assert not entropy_per_dim, "Not implemented"
         if target_entropy is None:
-            target_entropy = - action_dim / 2
+            target_entropy = - action_dim_per_step / 2  # 基于单步的action维度
 
         return cls(
             state=state,
@@ -791,6 +841,9 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
                 cql_action_sample_method=cql_action_sample_method,
                 cql_n_actions=cql_n_actions,
                 action_dim=action_dim,
+                # 🚀 Action chunking 参数
+                action_chunk_size=action_chunk_size,
+                action_dim_per_step=action_dim_per_step,
                 cql_temp=cql_temp,
                 cql_clip_diff_min=cql_clip_diff_min,
                 cql_clip_diff_max=cql_clip_diff_max,
@@ -905,12 +958,24 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         critic_def = partial(
             Critic, encoder=encoders["critic"], network=critic_backbone)(name="critic")
 
+        # 🚀 计算 action_dim（支持 action chunking）
+        # 如果 actions 是 2D (chunk_size, action_dim_per_step)，展平为 1D
+        # 如果 actions 是 1D (action_dim,)，保持不变
+        if actions.ndim == 2:
+            # Action chunking 模式: (chunk_size, action_dim_per_step)
+            action_dim_total = actions.shape[0] * actions.shape[1]  # chunk_size * action_dim_per_step
+            if fix_gripper:
+                # 如果固定夹爪，每个动作少1维
+                action_dim_total = actions.shape[0] * (actions.shape[1] - 1)
+        else:
+            # 传统模式: (action_dim,)
+            action_dim_total = actions.shape[-1] - 1 if fix_gripper else actions.shape[-1]
+
         actor_def = ConsistencyPolicy_octo(
             encoder=encoders["actor"],
             network=MLP(**policy_network_kwargs),
             t_network=timeMLP(**policy_t_network_kwargs),
-            action_dim=actions.shape[-1] -
-            1 if fix_gripper else actions.shape[-1],
+            action_dim=action_dim_total,
             **policy_kwargs,
             name="actor",
         )

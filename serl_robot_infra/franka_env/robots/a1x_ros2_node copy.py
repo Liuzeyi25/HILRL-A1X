@@ -25,21 +25,6 @@ except ImportError:
     HAS_PINOCCHIO = False
     print("Warning: Pinocchio not available, FK computation disabled")
 
-# 🔧 CuRobo IK支持（可选）
-try:
-    import sys
-    # 添加项目路径到sys.path
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-    
-    from a1_x_kenimetic_haoyuan import A1Kinematics
-    HAS_CUROBO_IK = True
-    print("✅ CuRobo IK available")
-except ImportError as e:
-    HAS_CUROBO_IK = False
-    print(f"⚠️  CuRobo IK not available: {e}")
-
 
 class A1XRobotZMQNode(Node):
     """ROS2 node that bridges to ZMQ for A1_X robot control.
@@ -78,21 +63,11 @@ class A1XRobotZMQNode(Node):
                 self.get_logger().info(
                     f"🚀 Using external CuRobo IK service: {self.curobo_ik_service}"
                 )
-            elif HAS_CUROBO_IK:
-                self.get_logger().info("🚀 Initializing CuRobo IK solver...")
-                try:
-                    self.curobo_ik_solver = A1Kinematics(
-                        urdf_file="/home/dungeon_master/A1_X/arm/install/mobiman/share/mobiman/urdf/A1X/urdf/a1x.urdf",
-                        base_link="base_link",
-                        ee_link="arm_link6"
-                    )
-                    self.get_logger().info("✅ CuRobo IK solver initialized successfully")
-                except Exception as e:
-                    self.get_logger().error(f"❌ Failed to initialize CuRobo IK: {e}")
-                    self.use_curobo_ik = False
-                    self.get_logger().warn("⚠️  Falling back to RelaxedIK (Cartesian control)")
             else:
-                self.get_logger().warn("⚠️  CuRobo IK requested but not available, using RelaxedIK")
+                self.get_logger().warn(
+                    "⚠️  CuRobo IK requested but no service address provided, "
+                    "using RelaxedIK"
+                )
                 self.use_curobo_ik = False
         if not self.use_curobo_ik:
             self.get_logger().info("🎯 Using RelaxedIK (Cartesian control)")
@@ -348,7 +323,7 @@ class A1XRobotZMQNode(Node):
                         result = self.publish_eef_command(
                             eef_pose, 
                             wait_for_completion=wait_for_completion,
-                            joint_tolerance=0.01,  # 0.01 rad joint tolerance
+                            position_tolerance=0.008,  # 8mm
                             timeout=timeout
                         )
                         
@@ -544,7 +519,7 @@ class A1XRobotZMQNode(Node):
                 msg.name = [f"joint_{i+1}" for i in range(len(arm_positions))]
         
         msg.position = arm_positions
-        msg.velocity = [2.0] * len(arm_positions)  # 恒定速度
+        msg.velocity = [10.0] * len(arm_positions)  # 恒定速度
         msg.effort = []
         # 🚀 高频循环中禁用 print，避免阻塞！
         # print(f"Publishing joint command: positions={arm_positions}, gripper={gripper_position}")
@@ -564,7 +539,7 @@ class A1XRobotZMQNode(Node):
             intended.append(float(gripper_position))
         return intended
 
-    def publish_eef_command(self, eef_pose, wait_for_completion=True, joint_tolerance=0.005, timeout=2.0):
+    def publish_eef_command(self, eef_pose, wait_for_completion=True, position_tolerance=0.008, timeout=2.0):
         """Publish end-effector pose command using external CuRobo IK service.
         
         Args:
@@ -573,11 +548,11 @@ class A1XRobotZMQNode(Node):
                      Next 3: delta rotation (euler angles in radians)
                      Last 1: gripper absolute position (0-100mm)
             wait_for_completion: 是否等待执行到位
-            joint_tolerance: 关节角度误差容忍度（弧度）
+            position_tolerance: 位置误差容忍度（米）
             timeout: 超时时间（秒）
         
         Returns:
-            dict with 'target_joints', 'reached', 'final_error', 'gripper'
+            dict with 'target_pos', 'target_quat', 'reached', 'final_error', 'gripper'
         """
         if len(eef_pose) != 7:
             self.get_logger().error(f"Invalid eef_pose length: {len(eef_pose)}, expected 7")
@@ -609,8 +584,6 @@ class A1XRobotZMQNode(Node):
         delta_rotation = R.from_euler('xyz', delta_rot_euler)
         new_rotation = delta_rotation * current_rotation
         new_quat = new_rotation.as_quat()  # [x, y, z, w]
-        
-        print(f"[a1x_ros2_node] Action to be Solved - pos: {new_pos}, quat[x,y,z,w]: {new_quat}")
 
         # 调用外部CuRobo IK服务
         reply = self._request_remote_ik(new_pos, new_quat, current_joints)
@@ -623,21 +596,12 @@ class A1XRobotZMQNode(Node):
             self.get_logger().error("Invalid IK solution from service")
             return None
         
-        # 计算关节差距
-        joint_diff = np.abs(joint_solution - current_joints)
-        max_diff = joint_diff.max()
-        
-        print(f"[a1x_ros2_node] Current joints: {current_joints}")
-        print(f"[a1x_ros2_node] Target joints:  {joint_solution}")
-        print(f"[a1x_ros2_node] Joint diff:     {joint_diff}")
-        print(f"[a1x_ros2_node] Max joint diff: {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f}°)") 
-        
         # 发布关节命令
         self.publish_joint_command(
             np.concatenate([joint_solution, [gripper_position]])
         )
         
-        # 等待执行到位（用关节角度判断）
+        # 等待执行到位
         reached = False
         final_error = float('inf')
         
@@ -647,15 +611,15 @@ class A1XRobotZMQNode(Node):
             
             while time.time() - start_time < timeout:
                 with self._lock:
-                    if self._current_joint_positions is None:
+                    if self._current_pos is None:
                         time.sleep(poll_interval)
                         continue
-                    current_joints_check = np.array(self._current_joint_positions[:6])
+                    current_pos_check = self._current_pos.copy()
                 
-                joint_error = np.abs(current_joints_check - joint_solution).max()
-                final_error = joint_error
+                pos_error = np.linalg.norm(current_pos_check - new_pos)
+                final_error = pos_error
                 
-                if joint_error < joint_tolerance:
+                if pos_error < position_tolerance:
                     reached = True
                     break
                 
@@ -663,11 +627,12 @@ class A1XRobotZMQNode(Node):
             
             if not reached:
                 self.get_logger().warn(
-                    f"EEF timeout: joint error={final_error:.4f} rad (tolerance={joint_tolerance:.4f} rad)"
+                    f"EEF timeout: error={final_error*1000:.1f}mm (tolerance={position_tolerance*1000:.1f}mm)"
                 )
         
         return {
-            'target_joints': joint_solution.tolist(),
+            'target_pos': new_pos.tolist(),
+            'target_quat': new_quat.tolist(),
             'reached': reached,
             'final_error': float(final_error),
             'gripper': float(gripper_position)

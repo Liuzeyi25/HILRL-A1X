@@ -74,6 +74,57 @@ def print_green(x):
     return print("\033[92m {}\033[00m".format(x))
 
 
+def reorganize_transitions_to_chunks(transitions, chunk_size):
+    """
+    📦 方案B：离线重组transitions为action chunks
+    
+    输入: [(s0,a0), (s1,a1), (s2,a2), ...]
+    输出: [(s0,[a0,a1,a2,a3]), (s1,[a1,a2,a3,a4]), ...]
+    
+    Args:
+        transitions: List of single-step transitions (actions可能是单步或chunk)
+        chunk_size: Action chunk size (e.g., 4)
+    
+    Returns:
+        List of chunked transitions
+    """
+    if len(transitions) == 0:
+        return []
+    
+    chunked_transitions = []
+    
+    # 获取action_dim（从第一个单步动作中获取）用于对齐dtype
+    first_action = transitions[0]['actions']
+    if first_action.ndim == 1:
+        action_dim = first_action.shape[0]
+    else:  # ndim == 2, 已经是chunk
+        action_dim = first_action.shape[1]
+    
+    for i in range(len(transitions)):
+        trans = transitions[i].copy()
+        
+        # 收集当前及未来的actions: [a_i, a_{i+1}, ..., a_{i+chunk_size-1}]
+        action_chunk = []
+        for j in range(chunk_size):
+            if i + j < len(transitions):
+                action = transitions[i + j]['actions']
+                # 如果是单步动作，直接添加；如果是chunk，取第一步
+                if action.ndim == 1:
+                    action_chunk.append(action)
+                # else:  # 已经是chunk，只取第一步（因为只有第一步被执行了）
+                #     action_chunk.append(action[0])
+            else:
+                # Episode结束，用单步的0填充
+                action_chunk.append(np.zeros(action_dim, dtype=first_action.dtype))
+        
+        # 更新action为chunk
+        trans['actions'] = np.array(action_chunk)  # Shape: [chunk_size, action_dim]
+        
+        chunked_transitions.append(trans)
+    
+    return chunked_transitions
+
+
 ##############################################################################
 
 
@@ -147,6 +198,9 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                     argmax=False,
                 )
                 actions = np.asarray(jax.device_get(actions))
+                # 🔍 Debug: 打印 action shape
+                if step % 100 == 0:
+                    print_green(f"[Actor] Step {step}: actions shape = {actions.shape}")
 
         # Step environment
         with timer.context("step_env"):
@@ -156,9 +210,22 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
             if "right" in info:
                 info.pop("right")
 
+            # 🎯 处理 chunk 提前结束的情况（用0填充未执行的动作）
+            if 'executed_actions' in info and 'total_chunk_size' in info:
+                executed = info.pop('executed_actions')
+                total = info.pop('total_chunk_size')
+                if executed < total:
+                    # 动作提前结束，用0填充剩余部分
+                    if actions.ndim == 2:  # shape: (chunk_size, action_dim)
+                        padding = np.zeros((total - executed, actions.shape[1]), dtype=actions.dtype)
+                        actions = np.concatenate([actions[:executed], padding], axis=0)
+                    # 如果是1维，不需要填充（说明 chunk_size=None）
+                    
             # override the action with the intervention action
-            if "intervene_action" in info:
-                actions = info.pop("intervene_action")
+            if "intervene_action_eef" in info:
+                actions = info.pop("intervene_action_eef")  # 单步干预动作 (action_dim,)
+                # 干预时直接保存单步动作，在episode结束后统一重组
+                    
                 intervention_steps += 1
                 if not already_intervened:
                     intervention_count += 1
@@ -177,6 +244,9 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                 intervened=already_intervened,
                 embeddings=action_embeddings,
             )
+            # 🔍 Debug: 打印 transition action shape
+            if step % 100 == 0:
+                print_green(f"[Actor] Step {step}: Transition actions shape = {transition['actions'].shape}, intervened = {already_intervened}")
             if 'grasp_penalty' in info:
                 transition['grasp_penalty'] = info['grasp_penalty']
 
@@ -188,6 +258,22 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                                                           FLAGS.reward_scale, FLAGS.reward_bias, FLAGS.reward_neg, is_sparse_reward=False
                                                           )
                 trajectory = add_next_embeddings_to_trajectory(trajectory)
+                
+                # 📦 检查是否需要重组：如果有任何单步动作，需要重组整个trajectory
+                if hasattr(config, 'action_chunk_size') and config.action_chunk_size:
+                    # 检查是否有单步动作（干预产生）
+                    has_single_step = any(t['actions'].ndim == 1 for t in trajectory)
+                    if has_single_step:
+                        # 有单步动作，需要重组整个trajectory
+                        trajectory = reorganize_transitions_to_chunks(trajectory, config.action_chunk_size)
+                        if step % 100 == 0:
+                            print_green(f"📦 Episode结束，重组为action chunks (size={config.action_chunk_size})")
+                    # # else:
+                    #     # 所有actions已经是chunk格式（策略输出），仍需重组以处理最后几帧不满的情况
+                    #     trajectory = reorganize_transitions_to_chunks(trajectory, config.action_chunk_size)
+                    #     if step % 100 == 0:
+                    #         print_green(f"✅ 重组chunk trajectory，填充最后几帧")
+                
                 for transition in trajectory:
                     data_store.insert(transition)
                     transitions.append(copy.deepcopy(transition))
@@ -221,7 +307,7 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                 obs, _ = env.reset()
 
         if step > 0 and config.buffer_period > 0 and step % config.buffer_period == 0:
-            # dump to pickle file
+            # dump to pickle file (transitions 已经在 episode 结束时重组过了)
             buffer_path = os.path.join(FLAGS.checkpoint_path, "buffer")
             demo_buffer_path = os.path.join(
                 FLAGS.checkpoint_path, "demo_buffer")
@@ -425,6 +511,9 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
                 **batch,
                 "tasks": create_batch_tasks(tasks, config.batch_size),
             }
+            # 🔍 Debug: 打印 batch action shape
+            if step % 100 == 0:
+                print_green(f"[Learner] Step {step}: batch['actions'] shape = {batch['actions'].shape}")
             batch = frozen_dict.freeze(batch)
             agent, update_info = agent.update_ql(
                 batch, networks_to_update=train_networks_to_update,)
@@ -482,11 +571,23 @@ def main(_):
     octo_model = OctoModel.load_pretrained(config.octo_path)
     tasks = octo_model.create_tasks(texts=[config.task_desc])
 
+    # 🔧 从 demo 数据获取正确的 action 形状（支持 chunked actions）
+    sample_action = env.action_space.sample()
+    # if FLAGS.demo_path is not None and len(FLAGS.demo_path) > 0:
+    #     try:
+    #         with open(FLAGS.demo_path[0], "rb") as f:
+    #             demo_transitions = pkl.load(f)
+    #             if len(demo_transitions) > 0 and 'actions' in demo_transitions[0]:
+    #                 sample_action = demo_transitions[0]['actions']
+    #                 print_green(f"📊 使用 demo action 形状: {sample_action.shape}")
+    #     except Exception as e:
+    #         print_green(f"⚠️  无法加载 demo 数据，使用默认 action 形状: {e}")
+
     if config.setup_mode == 'single-arm-fixed-gripper':
         agent: ConrftCPOctoAgentSingleArm = make_conrft_octo_cp_pixel_agent_single_arm(
             seed=FLAGS.seed,
             sample_obs=env.observation_space.sample(),
-            sample_action=env.action_space.sample(),
+            sample_action=sample_action,
             sample_tasks=tasks,
             octo_model=octo_model,
             image_keys=config.image_keys,
@@ -503,7 +604,7 @@ def main(_):
         agent: ConrftCPOctoAgentSingleArm = make_conrft_octo_cp_pixel_agent_single_arm(
             seed=FLAGS.seed,
             sample_obs=env.observation_space.sample(),
-            sample_action=env.action_space.sample(),
+            sample_action=sample_action,
             sample_tasks=tasks,
             octo_model=octo_model,
             image_keys=config.image_keys,

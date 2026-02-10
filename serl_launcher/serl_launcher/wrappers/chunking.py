@@ -66,9 +66,25 @@ class ChunkingWrapper(gym.Wrapper):
 
         assert len(action) >= act_exec_horizon
 
+        # executed_actions = 0
         for i in range(act_exec_horizon):
             obs, reward, done, trunc, info = self.env.step(action[i], *args)
             self.current_obs.append(obs)
+            # executed_actions = i + 1
+            
+            # 🎯 如果 episode 结束，立即停止
+            if done or trunc:
+                # 填充剩余的观测（保持 obs_horizon 大小一致）
+                remaining = act_exec_horizon - i - 1
+                if remaining > 0:
+                    for _ in range(remaining):
+                        self.current_obs.append(obs)
+                break
+        
+        # 🎯 记录实际执行的动作数量
+        # info['executed_actions'] = executed_actions
+        # info['total_chunk_size'] = act_exec_horizon
+        
         return (stack_obs(self.current_obs), reward, done, trunc, info)
 
     def reset(self, **kwargs):

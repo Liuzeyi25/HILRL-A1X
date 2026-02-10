@@ -48,6 +48,8 @@ class DefaultA1XEnvConfig:
     A1X_NODE_NAME: str = "a1x_serl_node"
     A1X_PORT: int = 6100
     A1X_PYTHON_PATH: str = "/usr/bin/python3"
+    # Optional external CuRobo IK service (e.g. tcp://127.0.0.1:6202)
+    A1X_CUROBO_IK_SERVICE: str | None = None
     
     # Camera Configuration
     REALSENSE_CAMERAS: Dict = {
@@ -138,11 +140,15 @@ class A1XEnv(gym.Env):
 
         # Initialize robot
         print("Initializing A1_X robot...")
+        # 🔧 从配置中读取IK选项
+        use_curobo_ik = getattr(self.config, 'USE_CUROBO_IK', False)
         self.robot = A1XRobot(
             num_dofs=self.config.A1X_NUM_DOFS,
             node_name=self.config.A1X_NODE_NAME,
             port=self.config.A1X_PORT,
             python_path=self.config.A1X_PYTHON_PATH,
+            use_curobo_ik=use_curobo_ik,
+            curobo_ik_service=getattr(self.config, "A1X_CUROBO_IK_SERVICE", None),
         )
 
         # Initialize cameras
@@ -180,9 +186,7 @@ class A1XEnv(gym.Env):
         """
         start_time = time.time()
         # haoyuan debug
-        # action = np.clip(action, self.action_space.low, self.action_space.high)
-        print(f"Action scale: {self.action_space.low}, {self.action_space.high}")
-        
+        # action = np.clip(action, self.action_space.low, self.action_space.high)        
         # Scale action
         scaled_action = action * self.action_scale
         
@@ -199,31 +203,34 @@ class A1XEnv(gym.Env):
         # Debug print
         print(f"EEF delta: pos={scaled_action[:3]}, rot={scaled_action[3:6]}, gripper: {current_gripper_normalized:.3f} -> {new_gripper_normalized:.3f} ({new_gripper_mm:.1f}mm)")
         
-        # Send EEF command to robot
+        # Send EEF command to robot with intelligent waiting
         cmd_send_time = time.time()
-        self.robot.command_eef_pose(eef_command) # Send delta EEF command gripper is absolute mm
+        result = self.robot.command_eef_pose(
+            eef_command, 
+            wait_for_completion=True,  # 智能等待执行到位
+            timeout=2.0  # 2秒超时
+        )
         
         self.curr_path_length += 1
+        
+        # 智能等待已包含在command_eef_pose中，不需要额外延迟
         dt = time.time() - start_time
+        remaining_time = (1.0 / self.hz) - dt
+        if remaining_time > 0:
+            time.sleep(remaining_time)
         
-        # 🔍 诊断: 在读取状态前添加额外等待时间，让机器人完成运动 haoyuan
-        # 选项1: 使用固定延迟 (例如 50-100ms)
-        # time.sleep(0.08)  # 额外等待80ms
-        
-        # 选项2: 先按频率休眠，再额外等待 haoyuan
-        time.sleep(max(0, (1.0 / self.hz) - dt))
-        
-        # 🔍 诊断: 添加额外延迟来测试是否是时序问题 haoyuan
-        extra_delay = 0.08  # 80ms额外延迟，可以调整这个值来测试
-        time.sleep(extra_delay)
-        
-        # Update state
+        # Update state (此时机器人应该已经到位)
         state_read_time = time.time()
         self._update_curr_joint_state()
         ob = self._get_obs()
         
-        # 🔍 诊断输出 haoyuan
-        print(f"⏱️  时序: 命令→状态读取 = {(state_read_time - cmd_send_time)*1000:.1f}ms (含{extra_delay*1000:.0f}ms额外延迟)")
+        # 诊断输出
+        if result:
+            reached_str = "✓" if result.get('reached', False) else "✗"
+            error_mm = result.get('final_error', 0) * 1000
+            print(f"⏱️  {reached_str} 执行耗时={(state_read_time - cmd_send_time)*1000:.0f}ms, 误差={error_mm:.1f}mm")
+        else:
+            print(f"⏱️  命令→状态读取 = {(state_read_time - cmd_send_time)*1000:.1f}ms")
         
         reward = self.compute_reward(ob)
         done = self.curr_path_length >= self.max_episode_length or reward or self.terminate
@@ -323,6 +330,11 @@ class A1XEnv(gym.Env):
         self.curr_path_length = 0
 
         self._update_curr_joint_state()
+        
+        # Update IK solver seed to current joint state after reset
+        if hasattr(self.robot, 'update_ik_seed'):
+            self.robot.update_ik_seed()
+        
         obs = self._get_obs()
         self.terminate = False
         

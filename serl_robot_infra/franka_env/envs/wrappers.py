@@ -574,13 +574,16 @@ class GelloIntervention(gym.ActionWrapper):
         use_save_interface: bool = False,
         action_indices=None,
         always_intervene: bool = False,
-        sync_on_reset: bool = True,
+        sync_on_reset: bool = False,
         reset_follow_duration: float = 0.5,
         fast_intervention_mode: bool = True,
         threaded_control: bool = True,  # 🚀 新增：双线程控制模式
         eval_mode: bool = False,  # 🎯 新增：评估模式（禁用干预）
         sync_max_retries: int = 3,  # 🆕 同步最大重试次数
         sync_error_threshold: float = 0.15,  # 🆕 同步误差阈值（弧度）
+        sync_on_intervention: bool = True,  # 🆕 默认在线训练模式（按空格时同步）
+        enable_follower: bool = True,  # 🆕 是否初始化 GelloFollower（用于同步功能）
+       
     ):
         """
         Args:
@@ -596,6 +599,12 @@ class GelloIntervention(gym.ActionWrapper):
             fast_intervention_mode: If True, use fast direct control during intervention
             threaded_control: If True, use background thread for high-freq control
             eval_mode: If True, disable intervention (evaluation mode)
+            sync_on_intervention: If True, sync when intervention enabled
+            enable_follower: If True, initialize GelloFollower for sync
+                - 在线训练：enable_follower=True, sync_on_reset=False
+                  (初始化follower但reset不同步，只在按空格时同步)
+                - 数据采集：enable_follower=True, sync_on_reset=True
+                  (初始化follower并在reset时同步)
         """
         super().__init__(env)
         
@@ -615,9 +624,11 @@ class GelloIntervention(gym.ActionWrapper):
         self.action_indices = action_indices
         self.control_rate_hz = control_rate_hz
         self.bimanual = right_config_path is not None
-        self.always_intervene = always_intervene and not eval_mode  # 🎯 评估模式强制禁用
+        self.always_intervene = always_intervene and not eval_mode
         self.eval_mode = eval_mode  # 🎯 新增：保存评估模式标志
         self.sync_on_reset = sync_on_reset
+        self.sync_on_intervention = sync_on_intervention  # 🆕 保存干预同步标志
+        self.enable_follower = enable_follower  # 🆕 保存follower初始化标志
         self.reset_follow_duration = reset_follow_duration
         self.fast_intervention_mode = fast_intervention_mode
         self.threaded_control = threaded_control  # 🚀 新增
@@ -626,7 +637,8 @@ class GelloIntervention(gym.ActionWrapper):
         self.sync_max_retries = sync_max_retries
         self.sync_error_threshold = sync_error_threshold
         
-        # 🔧 精确控制频率
+        
+        # �🔧 精确控制频率
         self._rate = Rate(control_rate_hz)
         self._fast_rate = Rate(control_rate_hz)
         
@@ -644,6 +656,10 @@ class GelloIntervention(gym.ActionWrapper):
         self._latest_gello_joints = None      # 最新 Gello 读数
         self._latest_a1x_command = None       # 最新发送的 A1X 命令
         self._control_step_count = 0          # 后台控制步数
+        
+        # 🆕 干预同步状态
+        self._intervention_just_enabled = False  # 刚刚启用干预，需要同步
+        self._syncing = False                    # 🔧 同步进行中标志（阻止其他控制）
         
         # 快速干预状态
         self._stop_fast_loop = False
@@ -729,7 +745,7 @@ class GelloIntervention(gym.ActionWrapper):
         
         # 🔧 恢复：初始化 GelloFollower（用于双向控制）
         self.gello_follower = None
-        if sync_on_reset:
+        if self.enable_follower:
             try:
                 from gello.agents.gello_follower import GelloFollower
                 
@@ -754,6 +770,8 @@ class GelloIntervention(gym.ActionWrapper):
         print(f"   - Bimanual: {self.bimanual}")
         print(f"   - 🚀 双线程控制: {'启用' if threaded_control else '禁用'}")
         print(f"   - 快速干预模式: {'启用' if fast_intervention_mode else '禁用'}")
+        if self.enable_follower:
+            print(f"   - 🔄 GelloFollower: 已初始化 (支持同步功能)")
         if sync_on_reset:
             print(f"   - 🔄 同步验证: 最大重试={sync_max_retries}, 误差阈值={sync_error_threshold:.3f} rad")
         if eval_mode:
@@ -763,10 +781,16 @@ class GelloIntervention(gym.ActionWrapper):
             print(f"   🎮 始终干预模式")
         else:
             print(f"   🎮 按空格键切换Gello干预 (当前: {'启用' if self.intervention_enabled else '禁用'})")
-        if sync_on_reset:
-            print(f"   🔄 双向控制已启用：Reset 时 Gello 跟随机器人")
+        
+        # 🆕 打印同步策略
+        if sync_on_reset and sync_on_intervention:
+            print(f"   🔄 同步模式: Reset时同步 + 启用干预时同步（数据采集）")
+        elif sync_on_reset:
+            print(f"   🔄 同步模式: 仅 Reset时同步（数据采集模式）")
+        elif sync_on_intervention:
+            print(f"   🔄 同步模式: 仅启用干预时同步（在线训练模式）")
         else:
-            print(f"   ⚪ 双向控制已禁用")
+            print(f"   ⚪ 同步已禁用")
         
         # 🚀 如果启用双线程控制且不是评估模式，启动后台控制线程
         if self.threaded_control and not eval_mode:
@@ -830,16 +854,74 @@ class GelloIntervention(gym.ActionWrapper):
                     rate.sleep()
                     continue
                 
+                # 🆕 检查是否需要同步 Gello（刚启用干预时）
+                need_sync = False
+                with self._thread_lock:
+                    if self._intervention_just_enabled:
+                        need_sync = True
+                        self._intervention_just_enabled = False  # 重置标志
+                        self._syncing = True  # 🔧 设置同步中标志，阻止其他控制
+                
+                # 🎯 只有启用 sync_on_intervention 时才执行同步
+                if need_sync and self.sync_on_intervention:
+                    print("\n" + "="*60)
+                    print("🔄 检测到干预启用，开始同步 Gello...")
+                    print("="*60)
+                    try:
+                        # 获取当前机器人位置
+                        robot = self._get_cached_robot()
+                        if robot is not None:
+                            current_a1x_joints = robot.get_joint_state()
+                            print(f"🤖 当前机器人位置: [{', '.join(f'{v:.3f}' for v in current_a1x_joints[:6])}]")
+                            
+                            # 执行同步
+                            self._iterative_sync_to_robot(current_a1x_joints)
+                            
+                            # 验证同步结果
+                            time.sleep(0.2)
+                            final_gello = self._get_current_gello_joints()
+                            if final_gello is not None:
+                                gello_target = self._a1x_to_gello_mapping(current_a1x_joints)
+                                if gello_target is not None:
+                                    final_error = np.max(np.abs(gello_target[:6] - final_gello[:6]))
+                                    if final_error < 0.15:
+                                        print(f"✅ 同步完成！误差: {final_error:.4f} rad")
+                                    else:
+                                        print(f"⚠️  同步完成，但误差较大: {final_error:.4f} rad")
+                            
+                            # 更新缓存位置
+                            with self._thread_lock:
+                                self._latest_a1x_command = current_a1x_joints.copy()
+                            
+                            print("🎮 现在可以开始人工控制了！")
+                        else:
+                            print("⚠️  无法获取机器人引用，跳过同步")
+                    except Exception as e:
+                        print(f"⚠️  同步失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    finally:
+                        # 🔧 无论同步成功或失败，都要清除同步中标志
+                        with self._thread_lock:
+                            self._syncing = False
+                    print("="*60 + "\n")
+                
+                # 🔧 同步期间跳过控制（等待同步完成）
+                if self._syncing:
+                    rate.sleep()
+                    continue
+                
                 # 🔧 干预未启用时，维持当前位置（避免漂移）
                 if not self.intervention_enabled:
-                    # 如果有缓存的位置，持续发送维持命令
-                    with self._thread_lock:
-                        if (self._latest_a1x_command is not None and
-                                robot is not None):
-                            robot.command_joint_state(
-                                self._latest_a1x_command,
-                                from_gello=False
-                            )
+                   # print("⏸️  控制循环：干预未启用!")
+                    # # 如果有缓存的位置，持续发送维持命令
+                    # with self._thread_lock:
+                    #     if (self._latest_a1x_command is not None and
+                    #             robot is not None):
+                    #         robot.command_joint_state(
+                    #             self._latest_a1x_command,
+                    #             from_gello=False
+                    #         )
                     rate.sleep()
                     continue
                 
@@ -1130,9 +1212,18 @@ class GelloIntervention(gym.ActionWrapper):
                     print("⚠️  始终干预模式已启用，无法通过空格键切换")
                     return
                 
+                # 🆕 检测干预状态变化
+                was_disabled = not self.intervention_enabled
+                
                 self.intervention_enabled = not self.intervention_enabled
                 status = "🟢 启用" if self.intervention_enabled else "🔴 禁用"
                 print(f"\n🎮 Gello干预已{status}")
+                
+                # 🆕 如果从禁用变为启用，设置同步标志
+                if was_disabled and self.intervention_enabled:
+                    with self._thread_lock:
+                        self._intervention_just_enabled = True
+                    print("🔄 将在下次控制循环中同步 Gello 到机器人位置...")
                 
                 # 如果禁用干预，停止快速干预循环
                 if not self.intervention_enabled:
@@ -1231,6 +1322,36 @@ class GelloIntervention(gym.ActionWrapper):
         🔧 非线程模式：
         当干预时，直接将 Gello 位置映射到 A1X 并发送绝对位置命令。
         """
+        # ========== 🔧 同步期间阻塞等待 ==========
+        # 循环检查是否正在同步，如果是则阻塞等待同步完成
+        sync_wait_start = time.time()
+        while True:
+            with self._thread_lock:
+                syncing = self._syncing
+            
+            if not syncing:
+                # 同步完成，继续执行
+                break
+            
+            # 同步进行中，打印提示并等待
+            if not hasattr(self, '_sync_wait_printed'):
+                print("\n" + "="*60)
+                print("⏸️  [step] 检测到同步进行中，阻塞等待同步完成...")
+                print("="*60)
+                self._sync_wait_printed = True
+            
+            time.sleep(0.1)  # 每100ms检查一次
+            
+            # 超时保护（最多等待10秒）
+            if time.time() - sync_wait_start > 15.0:
+                print("⚠️  [step] 同步等待超时（>15s），强制继续")
+                break
+        
+        # 清除打印标志
+        if hasattr(self, '_sync_wait_printed'):
+            delattr(self, '_sync_wait_printed')
+            print("✅ [step] 同步完成，恢复执行")
+        
         # ========== 🎯 评估模式：跳过干预 ==========
         if self.eval_mode:
             obs, rew, done, truncated, info = self.env.step(action)
@@ -1347,10 +1468,6 @@ class GelloIntervention(gym.ActionWrapper):
             done = True  # 手动标记失败后结束 episode
             manual_succeed = False
             print(f"❌ 手动奖励已应用: reward={rew}, succeed=False")
-        # elif env is not None and hasattr(env, 'compute_reward'):
-        #     rew = env.compute_reward(obs)
-        #     done = rew > 0
-        # 检查 episode 长度（使用底层环境的计数器）
         base_env = self._get_cached_base_env()
         if base_env is not None and hasattr(base_env, 'curr_path_length'):
             base_env.curr_path_length += 1  # ✅ 明确使用底层环境
@@ -1375,6 +1492,17 @@ class GelloIntervention(gym.ActionWrapper):
         
         # 1. 获取后台线程记录的最新干预动作（A1X 关节空间）
         intervene_action = self.get_latest_intervention_action()
+        
+        # 🔧 如果后台线程还没有数据（刚启动），使用传入的 action
+        if intervene_action is None:
+            print("⚠️  后台线程还没有数据，使用策略动作")
+            # 使用非干预模式执行一步
+            obs, rew, done, truncated, info = self.env.step(action)
+            self.last_obs = obs
+            info["gello_intervened"] = False
+            info["threaded_mode"] = True
+            info["succeed"] = rew > 0
+            return obs, rew, done, truncated, info
         
         # 2. 正常获取观测（不发送命令，后台线程已经在发了）
         env = self._get_cached_base_env()
@@ -1439,10 +1567,13 @@ class GelloIntervention(gym.ActionWrapper):
             intervene_action, intervene_action_eef, obs
         )
         
+        # � 方案B：在线采集单步数据，离线重组为chunks
+        # 这里只返回单步动作，chunking在保存时处理
+        
         # 6. 构建完整 info（兼容 record_demos_octo.py）
         info = {
             "intervene_action": intervene_action,       # A1X 关节空间 [7]
-            "intervene_action_eef": intervene_action_eef,  # EEF delta [7]
+            "intervene_action_eef": intervene_action_eef,  # 单步 EEF delta [7]
             "gello_intervened": True,
             "threaded_mode": True,
             "succeed": rew > 0 if manual_succeed is None else manual_succeed,  # 🎯 手动标记优先
@@ -1588,6 +1719,8 @@ class GelloIntervention(gym.ActionWrapper):
         """
         import time
         
+        # � 方案B不需要在线buffer管理
+        
         # 🔧 标记 reset 开始（暂停后台线程的控制）
         self._resetting = True
         
@@ -1596,9 +1729,36 @@ class GelloIntervention(gym.ActionWrapper):
             self.intervention_enabled = False
             print("🔴 Episode 结束，自动关闭 Gello 干预（按空格重新启用）")
         
+        # 🔧 关键修复：在 reset 之前，确保 Gello 处于自由模式
+        # 这样可以避免读取到缓存的错误位置
+        print("\n" + "="*60)
+        print("🔄 开始 Reset - 第 {} 次".format(
+            getattr(self, '_reset_count', 0) + 1))
+        print("="*60)
+        
+        # 强制停止任何可能残留的 following 模式
+        try:
+            if self.gello_follower is not None:
+                self.gello_follower.stop()
+                print("🛑 强制停止 Gello following 模式（清理残留状态）")
+                time.sleep(0.3)  # 等待模式切换完成
+        except Exception as e:
+            print(f"⚠️  停止 following 模式时出错（忽略）: {e}")
+        
+        # 🔍 读取 Gello 当前位置（reset 前）
+        gello_before_reset = self._get_current_gello_joints()
+        if gello_before_reset is not None:
+            print(f"📍 Reset 前 Gello 位置: "
+                  f"[{', '.join(f'{v:.3f}' for v in gello_before_reset[:6])}]")
+        
         # Reset base environment
         obs, info = self.env.reset(**kwargs)
         time.sleep(1.5)  # Wait for stability
+        
+        # 记录 reset 次数
+        if not hasattr(self, '_reset_count'):
+            self._reset_count = 0
+        self._reset_count += 1
         
         # 🔧 缓存观测
         self.last_obs = obs
@@ -1615,10 +1775,28 @@ class GelloIntervention(gym.ActionWrapper):
                 robot_joint_state = self._get_robot_joint_state(obs, info)
                 
                 if robot_joint_state is not None:
-                    print(f"🤖 Robot reset position (A1X): [{', '.join(f'{v:.3f}' for v in robot_joint_state)}]")
+                    print(f"🤖 Robot reset position (A1X): "
+                          f"[{', '.join(f'{v:.3f}' for v in robot_joint_state)}]")
                     
                     # 🆕 迭代同步：重复同步直到误差足够小
                     self._iterative_sync_to_robot(robot_joint_state)
+                    
+                    # 🔧 关键验证：确认 Gello 真的移动到了正确位置
+                    time.sleep(0.3)
+                    final_gello = self._get_current_gello_joints()
+                    if final_gello is not None:
+                        gello_target = self._a1x_to_gello_mapping(
+                            robot_joint_state)
+                        if gello_target is not None:
+                            final_error = np.max(np.abs(
+                                gello_target[:6] - final_gello[:6]))
+                            print(f"🔍 最终验证: Gello 误差 = {final_error:.4f} rad")
+                            
+                            if final_error > 0.2:
+                                print("⚠️  警告：Gello 位置误差过大，"
+                                      "可能存在硬件问题！")
+                                print(f"   目标: [{', '.join(f'{v:.3f}' for v in gello_target[:6])}]")
+                                print(f"   实际: [{', '.join(f'{v:.3f}' for v in final_gello[:6])}]")
                     
                     # 🔧 同步后读取 A1X 实际位置（避免跳变抖动）
                     time.sleep(0.1)  # 等待位置稳定
@@ -1626,7 +1804,8 @@ class GelloIntervention(gym.ActionWrapper):
                     if actual_a1x_pos is not None:
                         with self._thread_lock:
                             self._latest_a1x_command = actual_a1x_pos.copy()
-                        print(f"💾 已缓存 A1X 实际位置: [{', '.join(f'{v:.3f}' for v in actual_a1x_pos[:6])}]")
+                        print(f"💾 已缓存 A1X 实际位置: "
+                              f"[{', '.join(f'{v:.3f}' for v in actual_a1x_pos[:6])}]")
                     else:
                         # 回退：使用目标位置
                         with self._thread_lock:
@@ -1643,7 +1822,7 @@ class GelloIntervention(gym.ActionWrapper):
                 # Ensure we're back in teleoperation mode
                 try:
                     self._stop_following()
-                except:
+                except Exception:
                     pass
         
         # 🔧 重要：等待 Gello 模式切换完成，避免读取到不稳定的位置
@@ -1695,12 +1874,22 @@ class GelloIntervention(gym.ActionWrapper):
             
             # 3. 执行同步
             self._start_following()
-            print(f"⚡ 同步中 (用时 {self.reset_follow_duration}s)...")
+           # print(f"⚡ 同步中 (用时 {self.reset_follow_duration}s)...")
             self._slow_follow_to_target(gello_target, duration=self.reset_follow_duration)
+            
+            # 🔧 关键修复：在停止 following 之前，持续发送目标位置更长时间
+            # 确保电机真正到位并稳定
+            print("⏳ 持续保持目标位置 1.5 秒...")
+            if self.gello_follower is not None:
+                for _ in range(10):  # 30次 * 0.05秒 = 1.5秒
+                    self.gello_follower.command_follow(gello_target)
+                    time.sleep(0.05)
+            
             self._stop_following()
             
-            # 4. 等待稳定
-            time.sleep(0.1)
+            # # 4. 等待稳定（停止后等待更长时间）
+            # print("⏳ 等待电机模式切换...")
+            # time.sleep(0.5)
             
             # 5. 验证同步后的误差
             after_gello = self._get_current_gello_joints()
@@ -1950,26 +2139,51 @@ class GelloIntervention(gym.ActionWrapper):
     def _get_current_gello_joints(self) -> Optional[np.ndarray]:
         """🔧 恢复：Get current Gello joint positions"""
         try:
+            result = None
+            method_used = "未知"
+            
             # 方法1: 使用 GelloFollower 的 get_current_position
-            if self.gello_follower is not None and hasattr(self.gello_follower, 'get_current_position'):
-                return self.gello_follower.get_current_position()
+            if self.gello_follower is not None and hasattr(
+                self.gello_follower, 'get_current_position'):
+                result = self.gello_follower.get_current_position()
+                method_used = "GelloFollower.get_current_position()"
             
             # 方法2: Access the underlying DynamixelRobot through GelloAgent
-            robot = None
-            if hasattr(self.agent, '_robot'):
-                robot = self.agent._robot
-            elif hasattr(self.agent, '_agent') and hasattr(self.agent._agent, '_robot'):
-                robot = self.agent._agent._robot
-            
-            if robot is not None and hasattr(robot, 'get_joint_state'):
-                return robot.get_joint_state()
+            if result is None:
+                robot = None
+                if hasattr(self.agent, '_robot'):
+                    robot = self.agent._robot
+                elif hasattr(self.agent, '_agent') and hasattr(
+                    self.agent._agent, '_robot'):
+                    robot = self.agent._agent._robot
+                
+                if robot is not None and hasattr(robot, 'get_joint_state'):
+                    result = robot.get_joint_state()
+                    method_used = "DynamixelRobot.get_joint_state()"
             
             # 方法3: try agent's act method (which reads joint state)
-            if hasattr(self.agent, 'act'):
-                return self.agent.act(None)
+            if result is None and hasattr(self.agent, 'act'):
+                result = self.agent.act(None)
+                method_used = "GelloAgent.act()"
             
-            print("⚠️  无法获取 Gello 关节位置")
-            return None
+            if result is None:
+                print("⚠️  无法获取 Gello 关节位置")
+                return None
+            
+            # 🔍 调试：打印读取的位置和使用的方法
+            if not hasattr(self, '_gello_read_count'):
+                self._gello_read_count = 0
+            self._gello_read_count += 1
+            
+            # 只在关键时刻打印（reset 时）
+            if self._resetting or self._gello_read_count % 100 == 1:
+                pos_str = ', '.join(f'{v:.3f}' for v in result[:6])
+                print(f"🔍 [读取 #{self._gello_read_count}] "
+                      f"方法: {method_used}, "
+                      f"位置: [{pos_str}]")
+            
+            return result
+            
         except Exception as e:
             print(f"⚠️  获取 Gello 关节位置失败: {e}")
             return None

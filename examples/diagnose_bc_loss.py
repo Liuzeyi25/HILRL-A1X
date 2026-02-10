@@ -5,7 +5,7 @@
 
 用法:
 python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
-  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260207/traj_010_2026-02-07_16-51-07.pkl \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260209/a1x_pick_banana_18_demos.pkl \
   --exp_name=a1x_pick_banana \
   --detailed  # 可选: 显示详细的递归结构分析
 """
@@ -424,38 +424,76 @@ def analyze_demo_data(demo_paths):
     
     actions = np.array([t['actions'] for t in all_transitions])
     print(f"动作数据形状: {actions.shape}")
-    print(f"动作维度: {actions.shape[-1]}")
-    print()
     
-    # 🎯 检查第一帧动作（应该为0）
-    print("🔍 第一帧动作检查:")
-    first_action = actions[0]
-    print(f"  第一帧 actions: {first_action}")
-    first_action_norm = np.linalg.norm(first_action)
-    print(f"  第一帧 L2 范数: {first_action_norm:.6f}")
+    # 🎯 检测是否是 chunked actions
+    is_chunked = actions.ndim == 3
     
-    if first_action_norm < 1e-6:
-        print("  ✅ 第一帧动作为零向量 (正确)")
-    elif first_action_norm < 0.01:
-        print(f"  ⚠️  第一帧动作接近零但不为零 (范数={first_action_norm:.6f})")
+    if is_chunked:
+        print(f"✅ 检测到 Action Chunking: [N={actions.shape[0]}, chunk_size={actions.shape[1]}, action_dim={actions.shape[2]}]")
+        print(f"  - 每个样本包含 {actions.shape[1]} 个连续动作")
+        print(f"  - 每个动作的维度: {actions.shape[2]}")
+        print()
+        
+        # 展平 chunk 维度用于统计分析
+        # [N, chunk_size, action_dim] -> [N*chunk_size, action_dim]
+        actions_flat = actions.reshape(-1, actions.shape[-1])
+        print(f"展平后用于统计: {actions_flat.shape}")
+        print()
+        
+        # 🔍 检查第一帧的第一个动作（应该为0）
+        print("🔍 第一帧第一个动作检查:")
+        first_action = actions[0, 0]  # [chunk_size, action_dim] -> [action_dim]
+        print(f"  第一帧第一个动作: {first_action}")
+        first_action_norm = np.linalg.norm(first_action)
+        print(f"  第一帧第一个动作 L2 范数: {first_action_norm:.6f}")
+        
+        if first_action_norm < 1e-6:
+            print("  ✅ 第一帧第一个动作为零向量 (正确)")
+        elif first_action_norm < 0.01:
+            print(f"  ⚠️  第一帧第一个动作接近零但不为零 (范数={first_action_norm:.6f})")
+        else:
+            print(f"  ❌ 警告: 第一帧第一个动作不为零! (范数={first_action_norm:.6f})")
+            print("     这可能表示数据录制有问题")
+        print()
+        
+        # 使用展平后的数据进行统计
+        actions_for_stats = actions_flat
     else:
-        print(f"  ❌ 警告: 第一帧动作不为零! (范数={first_action_norm:.6f})")
-        print("     这可能表示数据录制有问题")
-    print()
+        print(f"动作维度: {actions.shape[-1]} (单步动作)")
+        print()
+        
+        # 🎯 检查第一帧动作（应该为0）
+        print("🔍 第一帧动作检查:")
+        first_action = actions[0]
+        print(f"  第一帧 actions: {first_action}")
+        first_action_norm = np.linalg.norm(first_action)
+        print(f"  第一帧 L2 范数: {first_action_norm:.6f}")
+        
+        if first_action_norm < 1e-6:
+            print("  ✅ 第一帧动作为零向量 (正确)")
+        elif first_action_norm < 0.01:
+            print(f"  ⚠️  第一帧动作接近零但不为零 (范数={first_action_norm:.6f})")
+        else:
+            print(f"  ❌ 警告: 第一帧动作不为零! (范数={first_action_norm:.6f})")
+            print("     这可能表示数据录制有问题")
+        print()
+        
+        actions_for_stats = actions
     
     # 总体统计
     print("📈 总体统计:")
-    print(f"  Mean: {np.mean(actions, axis=0)}")
-    print(f"  Std:  {np.std(actions, axis=0)}")
-    print(f"  Min:  {np.min(actions, axis=0)}")
-    print(f"  Max:  {np.max(actions, axis=0)}")
+    print(f"  Mean: {np.mean(actions_for_stats, axis=0)}")
+    print(f"  Std:  {np.std(actions_for_stats, axis=0)}")
+    print(f"  Min:  {np.min(actions_for_stats, axis=0)}")
+    print(f"  Max:  {np.max(actions_for_stats, axis=0)}")
     print()
     
     # 每个维度的详细统计
     print("📊 各维度详细统计:")
     dim_names = ["Joint1", "Joint2", "Joint3", "Joint4", "Joint5", "Joint6", "Gripper"]
-    for dim_idx in range(actions.shape[-1]):
-        dim_data = actions[:, dim_idx]
+    action_dim = actions_for_stats.shape[-1]
+    for dim_idx in range(action_dim):
+        dim_data = actions_for_stats[:, dim_idx]
         name = dim_names[dim_idx] if dim_idx < len(dim_names) else f"Dim{dim_idx}"
         print(f"  {name:8s}: mean={np.mean(dim_data):7.3f}, "
               f"std={np.std(dim_data):7.3f}, "
@@ -466,18 +504,48 @@ def analyze_demo_data(demo_paths):
     # 检查尺度不平衡
     print()
     print("⚠️  尺度不平衡检查:")
-    ranges = np.max(actions, axis=0) - np.min(actions, axis=0)
+    ranges = np.max(actions_for_stats, axis=0) - np.min(actions_for_stats, axis=0)
     max_range = np.max(ranges)
-    min_range = np.min(ranges)
+    min_range = np.min(ranges[ranges > 0])  # 避免除以0
     print(f"  最大范围: {max_range:.3f}")
     print(f"  最小范围: {min_range:.3f}")
-    print(f"  范围比值: {max_range / min_range:.2f}x")
-    
-    if max_range / min_range > 10:
-        print("  ❌ 警告: 不同维度的尺度差异过大 (>10x)!")
-        print("  建议: 实现动作归一化")
+    if min_range > 0:
+        print(f"  范围比值: {max_range / min_range:.2f}x")
+        
+        if max_range / min_range > 10:
+            print("  ❌ 警告: 不同维度的尺度差异过大 (>10x)!")
+            print("  建议: 实现动作归一化")
+        else:
+            print("  ✅ 尺度差异在可接受范围内")
     else:
-        print("  ✅ 尺度差异在可接受范围内")
+        print("  ⚠️  某些维度范围为0，无法计算比值")
+    
+    # 🔍 显示最后四帧的动作（用于检查 episode 结束时的动作）
+    print()
+    print("🔍 最后四帧动作详情:")
+    num_frames = len(all_transitions)
+    for i in range(max(0, num_frames - 4), num_frames):
+        action = all_transitions[i]['actions']
+        done = all_transitions[i]['dones']
+        reward = all_transitions[i]['rewards']
+        
+        done_str = "✅ DONE" if done else "      "
+        reward_str = f"rew={reward:+.2f}"
+        
+        print(f"\n  Frame {i:3d} [{done_str}] {reward_str}:")
+        
+        if is_chunked and action.ndim == 2:
+            # Chunked action: 显示完整的chunk
+            print(f"    Shape: {action.shape} (chunk_size={action.shape[0]}, action_dim={action.shape[1]})")
+            for j in range(action.shape[0]):
+                action_vec = action[j]
+                action_norm = np.linalg.norm(action_vec)
+                print(f"    [{j}]: {action_vec}  (norm={action_norm:.4f})")
+        else:
+            # Single-step action: 显示单个动作
+            action_norm = np.linalg.norm(action)
+            print(f"    Shape: {action.shape}")
+            print(f"    Value: {action}  (norm={action_norm:.4f})")
     
     # 分析奖励
     print_section("奖励统计")
@@ -575,6 +643,13 @@ def estimate_bc_loss_scale(actions, sigma_max=80.0, sigma_data=0.5):
     print(f"  sigma_max = {sigma_max}")
     print(f"  sigma_data = {sigma_data}")
     print()
+    
+    # 🎯 处理 chunked actions
+    if actions.ndim == 3:
+        print(f"检测到 chunked actions，展平用于估计: {actions.shape}")
+        actions = actions.reshape(-1, actions.shape[-1])
+        print(f"展平后: {actions.shape}")
+        print()
     
     # 模拟噪声过程
     batch_size = min(256, len(actions))

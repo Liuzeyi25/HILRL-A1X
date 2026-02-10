@@ -142,12 +142,25 @@ class A1XGripperPenaltyWrapper(gym.Wrapper):
             # 检测快速开关: 连续两个动作的夹爪方向相反且幅度大
             gripper_delta = gripper_action - self.last_action_gripper
             
+            # 🔧 修复: 如果是数组，取第一个元素转为标量
+            if isinstance(gripper_delta, np.ndarray):
+                if gripper_delta.size == 1:
+                    gripper_delta = gripper_delta.item()
+                else:
+                    gripper_delta = gripper_delta.flat[0]
+            
             if abs(gripper_delta) > self.threshold:
                 gripper_penalty = self.penalty
                 info["gripper_penalty"] = gripper_penalty
         
-        # 更新上次夹爪动作
-        self.last_action_gripper = gripper_action
+        # 更新上次夹爪动作（确保是标量）
+        if isinstance(gripper_action, np.ndarray):
+            if gripper_action.size == 1:
+                self.last_action_gripper = gripper_action.item()
+            else:
+                self.last_action_gripper = gripper_action.flat[0]
+        else:
+            self.last_action_gripper = gripper_action
         
         # 直接从底层环境更新当前夹爪位置
         base_env = self.env

@@ -30,6 +30,13 @@ class EnvConfig(DefaultA1XEnvConfig):
     A1X_NODE_NAME = "a1x_serl_node"
     A1X_PORT = 6100
     A1X_PYTHON_PATH = "/usr/bin/python3"
+    # Optional external CuRobo IK service address (e.g. tcp://127.0.0.1:6202)
+    A1X_CUROBO_IK_SERVICE = os.environ.get("CUROBO_IK_SERVICE")
+    
+    # 🔧 IK配置选项
+    # True: 使用CuRobo IK (GPU加速，更快)
+    # False: 使用RelaxedIK (A1X默认，稳定)
+    USE_CUROBO_IK = True  # 默认使用RelaxedIK
     
     # Camera Configuration - 腕部相机 + L515侧面相机
     REALSENSE_CAMERAS = {
@@ -119,6 +126,9 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
     reward_neg = -0.05
     
+    # 🚀 Action Chunking 配置
+    action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
+    
     # Task description (用于语言条件化策略)
     task_desc = "Pick banana and place on the plate"
     
@@ -134,7 +144,7 @@ class TrainConfig(DefaultTrainingConfig):
     gello_port = "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTA7NNNU-if00-port0"
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False, 
-                       stack_obs_num=1, eval_mode=False):
+                       stack_obs_num=1, eval_mode=False, data_collection_mode=False):
         """
         Create A1_X environment with appropriate wrappers.
         
@@ -144,6 +154,7 @@ class TrainConfig(DefaultTrainingConfig):
             classifier: 是否使用奖励分类器
             stack_obs_num: 观测堆叠数量
             eval_mode: 如果为 True，禁用 Gello 干预（评估模式）
+            data_collection_mode: 如果为 True，使用数据采集同步模式
         """
         
         # 创建基础 A1_X 环境
@@ -157,11 +168,28 @@ class TrainConfig(DefaultTrainingConfig):
         if not fake_env:
             if self.teleoperation_device == "gello":
                 # 🆕 新版：使用 YAML 配置文件（基于 launch_yaml.py 架构）
+                # 🎯 根据模式选择同步策略
+                if data_collection_mode:
+                    # 数据采集模式：Reset时同步，按空格不同步
+                    enable_follower_val = True
+                    sync_on_reset_val = True
+                    sync_on_intervention_val = False
+                    print("🎯 Gello 同步模式：数据采集（Reset时同步）")
+                else:
+                    # 在线训练模式：初始化follower，Reset不同步，按空格时同步
+                    enable_follower_val = True
+                    sync_on_reset_val = False  # 不在reset时同步
+                    sync_on_intervention_val = True
+                    print("🎯 Gello 同步模式：在线训练（仅启用干预时同步）")
+                
                 env = GelloIntervention(
-                    env, 
+                    env,
                     left_config_path=self.gello_config_path,  # YAML 配置路径
                     control_rate_hz=500,                       # 控制频率 (改为500Hz)
                     eval_mode=eval_mode,                       # 🎯 评估模式
+                    enable_follower=enable_follower_val,       # 🆕 是否初始化follower
+                    sync_on_reset=sync_on_reset_val,          # 🎯 Reset同步
+                    sync_on_intervention=sync_on_intervention_val,  # 🎯 干预同步
                 )
                 if eval_mode:
                     print(f"🎯 GelloIntervention 已创建（评估模式：干预已禁用）")
@@ -175,8 +203,13 @@ class TrainConfig(DefaultTrainingConfig):
         # SERL 观察包装器 - 标准化观察空间
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         
-        # Chunking wrapper - 用于动作序列
-        env = ChunkingWrapper(env, obs_horizon=stack_obs_num, act_exec_horizon=None)
+        # 🚀 Chunking wrapper - 用于动作序列（启用 action chunking）
+        # act_exec_horizon=4: 一次预测4个连续动作，每步执行一个
+        env = ChunkingWrapper(
+            env, 
+            obs_horizon=stack_obs_num,      # 观测历史（默认1）
+            act_exec_horizon=self.action_chunk_size  # 🚀 动作chunk大小（4个动作）
+        )
         
         # 奖励分类器 (如果启用)
         if classifier:

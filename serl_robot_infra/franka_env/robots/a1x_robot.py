@@ -9,6 +9,7 @@ communicating via ZMQ to work around Python version incompatibilities.
 
 import os
 import subprocess
+import sys
 import threading
 import time
 from typing import Dict, Optional
@@ -16,6 +17,19 @@ from typing import Dict, Optional
 import numpy as np
 import zmq
 from scipy.spatial.transform import Rotation as R
+import torch
+
+# Add project root to path for A1Kinematics import
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from a1_x_kenimetic_haoyuan import A1Kinematics
+    HAS_A1_KINEMATICS = True
+except ImportError:
+    HAS_A1_KINEMATICS = False
+    print("Warning: A1Kinematics not available. IK will not work.")
 
 
 class A1XRobotBridge:
@@ -154,6 +168,8 @@ class A1XRobot:
         node_name: str = "a1x_gello_node",
         port: int = 6100,
         python_path: str = "/usr/bin/python3",
+        use_curobo_ik: bool = True,
+        curobo_ik_service: Optional[str] = None,
     ):
         """Initialize the A1_X robot.
         
@@ -162,16 +178,36 @@ class A1XRobot:
             node_name: Name of the ROS2 node. Default is "a1x_gello_node".
             port: ZMQ port for communication. Default is 6100.
             python_path: Path to system Python 3.10 with ROS2. Default is /usr/bin/python3.
+            use_curobo_ik: If True, use CuRobo IK solver; otherwise use RelaxedIK. Default is False.
+            curobo_ik_service: Optional external CuRobo IK service address (e.g. tcp://127.0.0.1:6202).
         """
         self._num_dofs = num_dofs
         self._port = port
+        self._use_curobo_ik = use_curobo_ik
+        self._curobo_ik_service = curobo_ik_service or os.environ.get("CUROBO_IK_SERVICE")
         
         # Start ROS2 node process
         print("Starting ROS2 node subprocess...")
         script_path = os.path.join(os.path.dirname(__file__), "a1x_ros2_node.py")
         
+        # 🔧 Add --use-curobo-ik flag if requested
+        ik_flag = " --use-curobo-ik" if use_curobo_ik else ""
+        service_flag = (
+            f" --curobo-ik-service {self._curobo_ik_service}"
+            if self._curobo_ik_service
+            else ""
+        )
+        
         # Source ROS2 and run the node (use .zsh for subprocess compatibility)
-        cmd = f"source /opt/ros/humble/setup.zsh && {python_path} {script_path} --port {port} --node-name {node_name}"
+        cmd = (
+            f"source /opt/ros/humble/setup.zsh && {python_path} {script_path} "
+            f"--port {port} --node-name {node_name}{ik_flag}{service_flag}"
+        )
+        
+        if use_curobo_ik:
+            print("🚀 Using CuRobo IK solver for end-effector control")
+        else:
+            print("🎯 Using RelaxedIK (Cartesian control) for end-effector control")
         
         self._ros2_process = subprocess.Popen(
             cmd,
@@ -224,6 +260,22 @@ class A1XRobot:
         #   - alpha=1.0:  无滤波，直接响应
         # 在 500Hz 控制下: 13步 ≈ 26ms, 44步 ≈ 88ms
         self._gripper_alpha = 0.3  # 🔧 从 0.01 改为 0.3，提高夹爪响应速度
+        
+        # Initialize IK solver if using CuRobo IK
+        self._ik_solver = None
+        if use_curobo_ik and HAS_A1_KINEMATICS:
+            print("Initializing A1Kinematics IK solver...")
+            urdf_path = "/home/dungeon_master/A1_X/arm/install/mobiman/share/mobiman/urdf/A1X/urdf/a1x.urdf"
+            try:
+                self._ik_solver = A1Kinematics(
+                    urdf_file=urdf_path,
+                    base_link="base_link",
+                    ee_link="gripper_link"
+                )
+                print("✅ A1Kinematics IK solver initialized successfully")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize A1Kinematics: {e}")
+                self._ik_solver = None
 
     def num_dofs(self) -> int:
         """Get the number of joints of the robot.
@@ -430,34 +482,114 @@ class A1XRobot:
         
         return gello
 
-    def command_eef_pose(self, eef_delta: np.ndarray) -> None:
-        """Command the robot with EEF delta pose.
+    def update_ik_seed(self):
+        """Update IK solver's seed (prev_q) to current joint state.
+        
+        Should be called after robot reset or any large joint-space movement
+        to ensure IK solver starts from the correct current position.
+        """
+        if self._ik_solver is None:
+            return
+        
+        current_joints = self.get_joint_state()[:6]
+        self._ik_solver.prev_q = torch.as_tensor(
+            current_joints,
+            dtype=torch.float32,
+            device=self._ik_solver.tensor_args.device
+        ).unsqueeze(0)
+        print(
+            f"[A1XRobot] Updated IK seed to current joints: "
+            f"{current_joints}"
+        )
+
+    def command_eef_pose(self, eef_delta: np.ndarray, wait_for_completion: bool = True, timeout: float = 2.0) -> dict:
+        """Command the robot with EEF delta pose using local IK solver.
         
         Args:
             eef_delta: 7D array [delta_x, delta_y, delta_z, delta_rx, delta_ry, delta_rz, gripper]
                       First 3: delta position (m)
                       Next 3: delta rotation (euler angles in radians)
                       Last 1: gripper absolute position (0-100mm) or delta if you scale it
+            wait_for_completion: 是否等待执行到位（目前未实现）
+            timeout: 超时时间（秒）（目前未实现）
+        
+        Returns:
+            dict with execution status or None if failed
         """
-        with self._bridge._command_lock:
-            try:
-                self._bridge.command_socket.send_json({
-                    "cmd": "command_eef_pose",
-                    "pose": eef_delta.tolist(),
-                    "async": True  # Don't wait for movement completion
-                })
-                # Wait for acknowledgment (should be immediate)
-                self._bridge.command_socket.setsockopt(
-                    zmq.RCVTIMEO, 100)  # 100ms timeout
-                _ = self._bridge.command_socket.recv_json()
-                self._bridge.command_socket.setsockopt(
-                    zmq.RCVTIMEO, 50)  # Restore default
-            except zmq.Again:
-                print("⚠️  Warning: EEF command acknowledgment timeout")
-                self._bridge._reset_command_socket()
-            except Exception as e:
-                print(f"⚠️  Error sending EEF command: {e}")
-                self._bridge._reset_command_socket()
+        if self._ik_solver is None:
+            print("⚠️ IK solver not available, cannot execute EEF command")
+            return None
+        
+        if len(eef_delta) != 7:
+            print(f"⚠️ Invalid eef_delta length: {len(eef_delta)}, expected 7")
+            return None
+        
+        # 获取当前状态
+        ee_pos, ee_quat = self.get_eef_pose()
+        current_joints = self.get_joint_state()[:6]  # 只取前6个关节
+        
+        if ee_pos is None or ee_quat is None:
+            print("⚠️ Current EE pose not available")
+            return None
+        
+        # 处理 delta action → 绝对目标位姿
+        delta_pos = np.array(eef_delta[:3])
+        delta_rot_euler = np.array(eef_delta[3:6])
+        gripper_position = eef_delta[6]
+        
+        # 计算目标位置
+        target_pos = ee_pos + delta_pos
+        
+        # 计算目标旋转（旋转组合）
+        current_rotation = R.from_quat(ee_quat)  # [x, y, z, w]
+        delta_rotation = R.from_euler('xyz', delta_rot_euler)
+        target_rotation = delta_rotation * current_rotation
+        target_quat = target_rotation.as_quat()  # [x, y, z, w]
+        
+        print(f"[a1x_robot] Action to be Solved - pos: {target_pos}, quat[x,y,z,w]: {target_quat}")
+        
+        # 调用本地 IK 求解器
+        try:
+            # 确保 prev_q 在正确的设备上（与 IK solver 相同）
+            self._ik_solver.prev_q = torch.as_tensor(
+                current_joints,
+                dtype=torch.float32,
+                device=self._ik_solver.tensor_args.device
+            ).unsqueeze(0)
+            result = self._ik_solver.solve_ik(
+                pos=target_pos,
+                quat=target_quat
+            )
+        except Exception as e:
+            print(f"⚠️ IK solve failed: {e}")
+            return None
+        
+        # 检查求解是否成功
+        if not result.success.cpu().numpy().any():
+            print("⚠️ IK solver failed to find solution")
+            return None
+        
+        # 获取关节解
+        joint_solution = result.js_solution.position.cpu().numpy()[:6]
+        
+        # 计算关节差距
+        joint_diff = np.abs(joint_solution - current_joints)
+        max_diff = joint_diff.max()
+        
+        print(f"[a1x_robot] IK Solution Found - joints: {joint_solution}, max joint diff: {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f}°)")
+        
+        # 构建完整的关节命令（包括夹爪）
+        full_joint_command = np.concatenate([joint_solution, [gripper_position]])
+        
+        # 直接发送关节命令（不通过 Gello 映射，因为这是直接的关节控制）
+        self.command_joint_state(full_joint_command, from_gello=False)
+        
+        return {
+            'target_joints': joint_solution.tolist(),
+            'reached': True,  # 简化：不等待到位
+            'final_error': 0.0,
+            'gripper': float(gripper_position)
+        }
 
     def get_observations(self) -> Dict[str, np.ndarray]:
         """Get the current observations of the robot.
