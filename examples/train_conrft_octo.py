@@ -143,6 +143,14 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
     )
 
     client = None
+    # 🔍 网络通信监控
+    network_stats = {
+        "send_times": [],  # 统计发送耗时
+        "send_failures": 0,  # 发送失败次数
+        "last_param_update": time.time(),  # 最后一次收到参数的时间
+        "param_update_intervals": [],  # 参数更新间隔
+    }
+    
     if not is_eval_mode:
         # 训练模式：连接 learner server
         datastore_dict = {
@@ -150,21 +158,50 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
             "actor_env_intvn": intvn_data_store,
         }
 
+        print_green(f"🔌 正在连接到 Learner: {FLAGS.ip}...")
+        connection_start = time.time()
+        
         client = TrainerClient(
             "actor_env",
             FLAGS.ip,
             make_trainer_config(),
             data_stores=datastore_dict,
             wait_for_server=True,
-            timeout_ms=3000,
+            timeout_ms=10000,  # 增加到 10 秒，避免网络延迟导致的超时
         )
+        
+        connection_time = time.time() - connection_start
+        print_green(f"✅ 连接成功！耗时: {connection_time:.2f}s")
 
         # Function to update the agent with new params
+        param_update_count = [0]  # 使用列表以便在闭包中修改
+        
         def update_params(params):
             nonlocal agent
             agent = agent.replace(state=agent.state.replace(params=params))
+            param_update_count[0] += 1
+            
+            # 🔍 记录参数更新时间
+            now = time.time()
+            interval = now - network_stats["last_param_update"]
+            network_stats["param_update_intervals"].append(interval)
+            network_stats["last_param_update"] = now
+            
+            # 首次接收时打印醒目提示
+            if param_update_count[0] == 1:
+                print_green("=" * 60)
+                print_green("🎉 [Actor] 首次接收到网络参数！")
+                print_green("=" * 60)
+            
+            # 每10次更新打印一次，避免刷屏
+            if param_update_count[0] % 10 == 1:
+                avg_interval = np.mean(network_stats["param_update_intervals"][-10:]) if len(network_stats["param_update_intervals"]) > 0 else 0
+                print_green(
+                    f"📥 [Actor] Received network params "
+                    f"(update #{param_update_count[0]}, avg interval: {avg_interval:.2f}s)")
 
         client.recv_network_callback(update_params)
+        print_green("✅ [Actor] Connected to Learner, waiting for params...")
     else:
         print_green("🎯 评估模式：跳过 learner 连接")
 
@@ -292,7 +329,33 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                 else:
                     # send stats to the learner to log
                     stats = {"environment": info}
-                    client.request("send-stats", stats)
+                    
+                    # 🔍 监控统计发送性能
+                    send_start = time.time()
+                    send_success = False
+                    try:
+                        client.request("send-stats", stats)
+                        send_time = time.time() - send_start
+                        network_stats["send_times"].append(send_time)
+                        send_success = True
+                        
+                        if step % 100 == 0:  # 每100步打印一次
+                            avg_send = np.mean(network_stats["send_times"][-10:])
+                            max_send = np.max(network_stats["send_times"][-10:])
+                            print_green(
+                                f"📤 [Actor] Sent episode stats to Learner "
+                                f"(return={running_return:.2f}, "
+                                f"send_time={send_time*1000:.1f}ms, "
+                                f"avg={avg_send*1000:.1f}ms, max={max_send*1000:.1f}ms)")
+                    except Exception as e:
+                        send_time = time.time() - send_start
+                        network_stats["send_failures"] += 1
+                        print_green(
+                            f"⚠️  Failed to send stats to learner: {e}")
+                        print_green(
+                            f"   Attempt time: {send_time:.2f}s, "
+                            f"Total failures: {network_stats['send_failures']}")
+                        # 继续运行，不因为统计发送失败而中断训练
                 
                 pbar.set_description(f"last return: {running_return}")
                 running_return = 0.0
@@ -328,7 +391,72 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
 
         if step % config.log_period == 0 and not is_eval_mode:
             stats = {"timer": timer.get_average_times()}
-            client.request("send-stats", stats)
+            
+            # 🔍 添加网络诊断信息
+            send_start = time.time()
+            try:
+                client.request("send-stats", stats)
+                send_time = time.time() - send_start
+                network_stats["send_times"].append(send_time)
+            except Exception as e:
+                network_stats["send_failures"] += 1
+                print_green(f"⚠️  Failed to send timer stats: {e}")
+            
+            # 🔍 定期打印网络健康状况（每50个log_period）
+            if step % (config.log_period * 50) == 0 and step > 0:
+                print_green("\n" + "=" * 70)
+                print_green("📊 网络通信健康检查")
+                print_green("=" * 70)
+                
+                # 参数更新统计
+                time_since_param = time.time() - network_stats["last_param_update"]
+                intervals = network_stats["param_update_intervals"]
+                if len(intervals) > 0:
+                    avg_interval = np.mean(intervals)
+                    max_interval = np.max(intervals)
+                    min_interval = np.min(intervals)
+                    print_green("📥 参数更新:")
+                    print_green(f"   最后更新: {time_since_param:.1f}s 前")
+                    print_green(f"   平均间隔: {avg_interval:.2f}s")
+                    print_green(f"   最大间隔: {max_interval:.2f}s")
+                    print_green(f"   最小间隔: {min_interval:.2f}s")
+                    
+                    # 🚨 警告：参数更新间隔过长
+                    if time_since_param > 60:
+                        msg = f"⚠️  警告: 超过 {time_since_param:.0f}s "
+                        msg += "未收到参数更新！"
+                        print_green(msg)
+                        print_green("   Learner 可能阻塞或网络中断")
+                else:
+                    print_green("📥 参数更新: 尚未收到任何参数")
+                    print_green(f"⚠️  警告: 已等待 {time_since_param:.0f}s")
+                
+                # 统计发送性能
+                send_times = network_stats["send_times"]
+                if len(send_times) > 0:
+                    avg_send = np.mean(send_times) * 1000
+                    max_send = np.max(send_times) * 1000
+                    min_send = np.min(send_times) * 1000
+                    p95_send = np.percentile(send_times, 95) * 1000
+                    print_green("📤 统计发送:")
+                    print_green(f"   平均延迟: {avg_send:.1f}ms")
+                    print_green(f"   P95 延迟: {p95_send:.1f}ms")
+                    print_green(f"   最大延迟: {max_send:.1f}ms")
+                    print_green(f"   最小延迟: {min_send:.1f}ms")
+                    fail_count = network_stats['send_failures']
+                    print_green(f"   失败次数: {fail_count}")
+                    
+                    # 🚨 警告：发送延迟过高
+                    if avg_send > 500:
+                        msg = f"⚠️  警告: 平均发送延迟 {avg_send:.0f}ms 过高！"
+                        print_green(msg)
+                        print_green("   网络可能存在拥塞")
+                    if max_send > 2000:
+                        msg = f"⚠️  警告: 最大发送延迟 {max_send:.0f}ms！"
+                        print_green(msg)
+                        print_green("   可能有阻塞发生")
+                
+                print_green("=" * 70 + "\n")
 
 
 ##############################################################################
@@ -363,6 +491,35 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
     def stats_callback(type: str, payload: dict) -> dict:
         """Callback for when server receives stats request."""
         assert type == "send-stats", f"Invalid request type: {type}"
+        
+        # 🔍 打印接收到的统计信息
+        if "environment" in payload:
+            env_info = payload["environment"]
+            if "episode" in env_info:
+                ep_info = env_info["episode"]
+                # 安全地提取并格式化数值
+                return_val = ep_info.get('r', None)
+                if return_val is not None:
+                    # 转换 numpy 数组为标量
+                    return_val = float(np.asarray(return_val).item() if hasattr(return_val, 'item') else return_val)
+                    return_str = f"{return_val:.2f}"
+                else:
+                    return_str = "N/A"
+                
+                succeed_val = ep_info.get('succeed', 'N/A')
+                step_val = ep_info.get('total_steps', 'N/A')
+                
+                print_green(
+                    f"📥 [Learner] Received stats from Actor: "
+                    f"return={return_str}, "
+                    f"succeed={succeed_val}, "
+                    f"step={step_val}"
+                )
+        elif "timer" in payload:
+            # Timer 统计较多，只在 verbose 模式打印
+            if step % 1000 == 0:
+                print_green(f"📥 [Learner] Received timer stats from Actor")
+        
         if wandb_logger is not None:
             wandb_logger.log(payload, step=step)
         return {}  # not expecting a response
@@ -449,6 +606,7 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
 
     agent = jax.block_until_ready(agent)
     server.publish_network(agent.state.params)
+    print_green("📤 [Learner] Published initial network parameters")
 
     # Loop to wait until replay_buffer is filled
     pbar = tqdm.tqdm(
@@ -521,6 +679,8 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
         if step > 0 and step % (config.steps_per_update) == 0:
             agent = jax.block_until_ready(agent)
             server.publish_network(agent.state.params)
+            if step % 100 == 0:  # 每100步打印一次，避免刷屏
+                print_green(f"📤 [Learner] Published network at step {step}")
 
         if step % config.log_period == 0 and wandb_logger:
             wandb_logger.log(update_info, step=step)

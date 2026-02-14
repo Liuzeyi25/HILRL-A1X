@@ -6,814 +6,913 @@
 
 需要设计逻辑：action如果是delta eef，直接执行，如果是joint，也是直接执行
 
-
-
-EEF delta: pos=[0.00492945 0.00473599 0.00253645], rot=[-0.00649106 -0.00862724  0.00851763], gripper: 0.976 -> 0.967 (96.7mm)
-[a1x_robot] Action to be Solved - pos: [ 0.26716073 -0.00477589  0.19231058], quat[x,y,z,w]: [-0.0547898   0.69596588  0.01184798  0.7158835 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:46.025240 140540777723712 logger.py:71] Updating problem kernel [n_problems: 32 , num_particles: 25 ]
-I0210 10:23:46.026203 140540777723712 logger.py:71] Updating problem kernel [n_problems: 32 , num_particles: 4 ]
-I0210 10:23:46.087549 140540777723712 logger.py:71] ParallelMPPI: Updating sample set
-I0210 10:23:46.088744 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:46.088812 140540777723712 logger.py:71] Cloning math.Pose
-I0210 10:23:46.145555 140540777723712 logger.py:71] Updating optimizer params
-I0210 10:23:46.145925 140540777723712 logger.py:71] Cloning math.Pose
-I0210 10:23:46.146389 140540777723712 logger.py:71] Cloning math.Pose
-I0210 10:23:46.146672 140540777723712 logger.py:71] Solver was not initialized, warming up solver
-I0210 10:23:46.278260 140540777723712 logger.py:71] Updating state_seq buffer reference (created new tensor)
-I0210 10:23:46.483924 140540777723712 logger.py:71] Updating state_seq buffer reference (created new tensor)
-prev_q: [ 0.00530043  1.8323073  -1.1645405   0.8723076  -0.05949825 -0.08994307]
-Best IK solution: [ 0.00530043  1.8323073  -1.1645405   0.8723076  -0.05949825 -0.08994307]
-🌟 IK 求解耗时: 972.87 ms
-[a1x_robot] IK Solution Found - joints: [ 0.00530043  1.8323073  -1.1645405   0.8723076  -0.05949825 -0.08994307], max joint diff: 0.0254 rad (1.45°)
-⏱️  ✓ 执行耗时=994ms, 误差=0.0mm
+ [SpaceMouse] 已应用: reward=-1.0, succeed=False
+last return: -1.0:   0%|                | 587/992999 [02:01<30:31:37,  9.03it/s]CURRENT JOINTS: [ 0.23021277  1.93765957 -1.61191489  0.98       -0.07744681  0.16787234
+  0.        ]
+Interpolating move TO [-1.53100e-02  1.82555e+00 -1.13900e+00  8.68000e-01 -5.30000e-02
+ -1.03000e-01  1.00000e+02] over 20 steps (2.0s).
+FINAL JOINTS: [-1.34042553e-02  1.82851064e+00 -1.14191489e+00  8.62553191e-01
+ -5.27659574e-02 -1.02340426e-01  8.63544094e+01]
+⚠️  Warning: Large position error detected!
+   Position error: [1.90574468e-03 2.96063830e-03 2.91489362e-03 5.44680851e-03
+ 2.34042553e-04 6.59574468e-04 1.36455906e+01]
+   Max error: 13.6456 rad
+[A1XRobot] Updated IK seed to current joints: [-0.01340426  1.82851064 -1.14191489  0.86255319 -0.05276596 -0.10234043]
+last return: -1.0:   0%|               | 588/992999 [02:06<400:33:33,  1.45s/it]Raw action: [ 0.00883234  0.00336304  0.00080106  0.0115923  -0.02230305 -0.00289948
+ -0.2       ], Scaled action: [ 0.00883234  0.00336304  0.00080106  0.0115923  -0.02230305 -0.00289948
+ -0.2       ]
+EEF delta: pos=[0.00883234 0.00336304 0.00080106], rot=[ 0.0115923  -0.02230305 -0.00289948], gripper: 0.864 -> 0.664 (66.4mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27169938 -0.00587878  0.18990541], quat[x,y,z,w]: [-0.0450192   0.69181305  0.01437031  0.72052861]
+I0213 19:25:53.172770 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.172968 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.00579143  1.8420997  -1.1655214   0.8515486  -0.04134494 -0.09072389]
+Best IK solution: [-0.00579143  1.8420997  -1.1655214   0.8515486  -0.04134494 -0.09072389]
+🌟 IK 求解耗时: 46.27 ms
+[a1x_robot] IK Solution Found - joints: [-0.00579143  1.8420997  -1.1655214   0.8515486  -0.04134494 -0.09072389], max joint diff: 0.0249 rad (1.43°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 1, terminate: False
- [Actor] Step 0: Transition actions shape = (7,), intervened = False
-  0%|                                                                                                 | 1/1000000 [00:08<2286:04:20,  8.23s/it]EEF delta: pos=[ 6.15075417e-03  5.75981895e-03 -9.62923514e-05], rot=[-0.0027028  -0.00980463  0.00382365], gripper: 0.977 -> 0.963 (96.3mm)
-[a1x_robot] Action to be Solved - pos: [ 0.26838203 -0.00375205  0.18967783], quat[x,y,z,w]: [-0.05181662  0.69565472  0.01146933  0.71641329]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:47.140630 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:47.140851 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-I0210 10:23:47.140935 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-I0210 10:23:47.141113 140540777723712 logger.py:71] Updating optimizer params
-I0210 10:23:47.141332 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-I0210 10:23:47.141426 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-I0210 10:23:47.141889 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-I0210 10:23:47.142026 140540777723712 logger.py:71] Cloning JointState (breaks ref pointer)
-prev_q: [ 0.00771361  1.8380444  -1.1584816   0.85974276 -0.05592974 -0.08274147]
-Best IK solution: [ 0.00771361  1.8380444  -1.1584816   0.85974276 -0.05592974 -0.08274147]
-🌟 IK 求解耗时: 232.60 ms
-[a1x_robot] IK Solution Found - joints: [ 0.00771361  1.8380444  -1.1584816   0.85974276 -0.05592974 -0.08274147], max joint diff: 0.0230 rad (1.32°)
-⏱️  ✓ 执行耗时=234ms, 误差=0.0mm
+last return: -1.0:   0%|               | 589/992999 [02:06<289:34:22,  1.05s/it]Raw action: [ 0.0086308   0.000684   -0.00030717  0.01135057 -0.02030068  0.00535007
+ -0.2       ], Scaled action: [ 0.0086308   0.000684   -0.00030717  0.01135057 -0.02030068  0.00535007
+ -0.2       ]
+EEF delta: pos=[ 0.0086308   0.000684   -0.00030717], rot=[ 0.01135057 -0.02030068  0.00535007], gripper: 0.843 -> 0.643 (64.3mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27122701 -0.00872166  0.18904739], quat[x,y,z,w]: [-0.04772687  0.69197952  0.01704269  0.72013612]
+I0213 19:25:53.280819 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.281017 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01647391  1.841702   -1.1603118   0.8469331  -0.04082449 -0.10900953]
+Best IK solution: [-0.01647391  1.841702   -1.1603118   0.8469331  -0.04082449 -0.10900953]
+🌟 IK 求解耗时: 53.27 ms
+[a1x_robot] IK Solution Found - joints: [-0.01647391  1.841702   -1.1603118   0.8469331  -0.04082449 -0.10900953], max joint diff: 0.0207 rad (1.19°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 2, terminate: False
-  0%|                                                                                                  | 2/1000000 [00:08<993:26:07,  3.58s/it]EEF delta: pos=[ 0.00839717 -0.00250675  0.00343198], rot=[-0.0083305   0.00031428  0.00115932], gripper: 0.977 -> 0.972 (97.2mm)
-[a1x_robot] Action to be Solved - pos: [ 0.2754179  -0.00813084  0.19616001], quat[x,y,z,w]: [-0.05631758  0.69432354  0.00773941  0.71741428]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:47.370850 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:47.371148 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.00420243  1.852978   -1.2146397   0.8963653  -0.06699817 -0.09609465]
-Best IK solution: [-0.00420243  1.852978   -1.2146397   0.8963653  -0.06699817 -0.09609465]
-🌟 IK 求解耗时: 135.62 ms
-[a1x_robot] IK Solution Found - joints: [-0.00420243  1.852978   -1.2146397   0.8963653  -0.06699817 -0.09609465], max joint diff: 0.0534 rad (3.06°)
-⏱️  ✓ 执行耗时=137ms, 误差=0.0mm
+last return: -1.0:   0%|               | 590/992999 [02:06<212:33:36,  1.30it/s]Raw action: [ 0.01        0.00059255  0.00086452  0.01616061 -0.0245304  -0.00064525
+ -0.2       ], Scaled action: [ 0.01        0.00059255  0.00086452  0.01616061 -0.0245304  -0.00064525
+ -0.2       ]
+EEF delta: pos=[0.01       0.00059255 0.00086452], rot=[ 0.01616061 -0.0245304  -0.00064525], gripper: 0.792 -> 0.592 (59.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27248016 -0.00892313  0.19019538], quat[x,y,z,w]: [-0.04383787  0.69064189  0.01634654  0.72168193]
+I0213 19:25:53.400242 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.400431 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01894127  1.8425373  -1.1677039   0.84973216 -0.03610616 -0.10495451]
+Best IK solution: [-0.01894127  1.8425373  -1.1677039   0.84973216 -0.03610616 -0.10495451]
+🌟 IK 求解耗时: 54.78 ms
+[a1x_robot] IK Solution Found - joints: [-0.01894127  1.8425373  -1.1677039   0.84973216 -0.03610616 -0.10495451], max joint diff: 0.0286 rad (1.64°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 3, terminate: False
-  0%|                                                                                                  | 3/1000000 [00:08<563:52:14,  2.03s/it]EEF delta: pos=[0.0068374  0.00401212 0.00468715], rot=[-3.09727946e-03 -5.14730625e-03  6.68021967e-05], gripper: 0.977 -> 0.973 (97.3mm)
-[a1x_robot] Action to be Solved - pos: [ 2.76213367e-01 -5.90366725e-05  1.96262735e-01], quat[x,y,z,w]: [-0.0523332   0.68966308  0.00916884  0.72217865]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:47.561771 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:47.562099 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.02241988  1.8484654  -1.2084382   0.88343483 -0.06004041 -0.06607687]
-Best IK solution: [ 0.02241988  1.8484654  -1.2084382   0.88343483 -0.06004041 -0.06607687]
-🌟 IK 求解耗时: 136.68 ms
-[a1x_robot] IK Solution Found - joints: [ 0.02241988  1.8484654  -1.2084382   0.88343483 -0.06004041 -0.06607687], max joint diff: 0.0476 rad (2.73°)
-⏱️  ✓ 执行耗时=138ms, 误差=0.0mm
+last return: -1.0:   0%|               | 591/992999 [02:06<157:47:08,  1.75it/s]Raw action: [ 0.00849777  0.00325649  0.00088134  0.01391901 -0.02352448  0.00463224
+ -0.2       ], Scaled action: [ 0.00849777  0.00325649  0.00088134  0.01391901 -0.02352448  0.00463224
+ -0.2       ]
+EEF delta: pos=[0.00849777 0.00325649 0.00088134], rot=[ 0.01391901 -0.02352448  0.00463224], gripper: 0.740 -> 0.540 (54.0mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27137186 -0.00590984  0.19022958], quat[x,y,z,w]: [-0.0449555   0.69026756  0.01761243  0.72194148]
+I0213 19:25:53.508618 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.508819 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.0078535   1.8383669  -1.1618752   0.84752935 -0.03627318 -0.09726316]
+Best IK solution: [-0.0078535   1.8383669  -1.1618752   0.84752935 -0.03627318 -0.09726316]
+🌟 IK 求解耗时: 50.31 ms
+[a1x_robot] IK Solution Found - joints: [-0.0078535   1.8383669  -1.1618752   0.84752935 -0.03627318 -0.09726316], max joint diff: 0.0223 rad (1.28°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 4, terminate: False
-  0%|                                                                                                  | 4/1000000 [00:08<362:12:44,  1.30s/it]EEF delta: pos=[ 0.00927373  0.00921972 -0.00019252], rot=[-0.00612505 -0.00503737  0.007537  ], gripper: 0.977 -> 0.978 (97.8mm)
-[a1x_robot] Action to be Solved - pos: [0.27902914 0.00363974 0.19342952], quat[x,y,z,w]: [-0.06041298  0.69400173  0.01058905  0.71735608]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:47.750754 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:47.751103 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03918428  1.8678153  -1.2215496   0.8906559  -0.07009394 -0.06253599]
-Best IK solution: [ 0.03918428  1.8678153  -1.2215496   0.8906559  -0.07009394 -0.06253599]
-🌟 IK 求解耗时: 132.59 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03918428  1.8678153  -1.2215496   0.8906559  -0.07009394 -0.06253599], max joint diff: 0.0396 rad (2.27°)
-⏱️  ✓ 执行耗时=134ms, 误差=0.0mm
+last return: -1.0:   0%|               | 592/992999 [02:06<119:25:21,  2.31it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.          0.          0.         -0.00285714 -0.         -0.
+  0.        ], Scaled action: [-0.          0.          0.         -0.00285714 -0.         -0.
+  0.        ]
+EEF delta: pos=[-0.  0.  0.], rot=[-0.00285714 -0.         -0.        ], gripper: 0.685 -> 0.685 (68.5mm)
+[a1x_robot] Action to be Solved - pos: [ 0.26671499 -0.00826985  0.19017553], quat[x,y,z,w]: [-0.04798163  0.69351113  0.01186189  0.71874848]
+I0213 19:25:53.617681 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.617886 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01185623  1.8285117  -1.1475883   0.85142744 -0.04906294 -0.09749223]
+Best IK solution: [-0.01185623  1.8285117  -1.1475883   0.85142744 -0.04906294 -0.09749223]
+🌟 IK 求解耗时: 55.16 ms
+[a1x_robot] IK Solution Found - joints: [-0.01185623  1.8285117  -1.1475883   0.85142744 -0.04906294 -0.09749223], max joint diff: 0.0029 rad (0.17°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 5, terminate: False
-  0%|                                                                                                  | 5/1000000 [00:09<250:10:30,  1.11it/s]EEF delta: pos=[0.00318512 0.01066273 0.00327388], rot=[ 0.00050237 -0.00667623  0.00143153], gripper: 0.977 -> 0.975 (97.5mm)
-[a1x_robot] Action to be Solved - pos: [0.27902176 0.00625718 0.19977081], quat[x,y,z,w]: [-0.0497201   0.68709524  0.00538578  0.72484415]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:47.936521 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:47.936810 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04593813  1.8518697  -1.231887    0.8977751  -0.06304536 -0.03375916]
-Best IK solution: [ 0.04593813  1.8518697  -1.231887    0.8977751  -0.06304536 -0.03375916]
-🌟 IK 求解耗时: 100.19 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04593813  1.8518697  -1.231887    0.8977751  -0.06304536 -0.03375916], max joint diff: 0.0387 rad (2.22°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
+last return: -1.0:   0%|                | 593/992999 [02:06<92:36:18,  2.98it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.          0.00285714  0.         -0.04       -0.         -0.
+  0.        ], Scaled action: [-0.          0.00285714  0.         -0.04       -0.         -0.
+  0.        ]
+EEF delta: pos=[-0.          0.00285714  0.        ], rot=[-0.04 -0.   -0.  ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.26999941 -0.0051359   0.19106531], quat[x,y,z,w]: [-0.06026701  0.68967986  0.00192518  0.72159952]
+I0213 19:25:53.726810 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.727006 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.0121952   1.8324776  -1.1564896   0.8469412  -0.08101854 -0.07782477]
+Best IK solution: [ 0.0121952   1.8324776  -1.1564896   0.8469412  -0.08101854 -0.07782477]
+🌟 IK 求解耗时: 49.53 ms
+[a1x_robot] IK Solution Found - joints: [ 0.0121952   1.8324776  -1.1564896   0.8469412  -0.08101854 -0.07782477], max joint diff: 0.0412 rad (2.36°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 6, terminate: False
-  0%|                                                                                                  | 6/1000000 [00:09<179:36:40,  1.55it/s]EEF delta: pos=[0.00947822 0.00333289 0.00395598], rot=[-0.00424999 -0.01127741  0.00889789], gripper: 0.977 -> 0.966 (96.6mm)
-[a1x_robot] Action to be Solved - pos: [0.286338   0.00226961 0.20044468], quat[x,y,z,w]: [-0.0565956   0.68438248  0.00786998  0.72688075]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.089622 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.090002 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03268118  1.8703767  -1.2618883   0.9012018  -0.06810117 -0.0606948 ]
-Best IK solution: [ 0.03268118  1.8703767  -1.2618883   0.9012018  -0.06810117 -0.0606948 ]
-🌟 IK 求解耗时: 114.56 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03268118  1.8703767  -1.2618883   0.9012018  -0.06810117 -0.0606948 ], max joint diff: 0.0521 rad (2.99°)
-⏱️  ✓ 执行耗时=116ms, 误差=0.0mm
+last return: -1.0:   0%|                | 594/992999 [02:07<73:46:12,  3.74it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.    0.   -0.04  0.02 -0.    0.  ], Scaled action: [-0.    0.    0.   -0.04  0.02 -0.    0.  ]
+EEF delta: pos=[-0.  0.  0.], rot=[-0.04  0.02 -0.  ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27204081 -0.00811745  0.19159666], quat[x,y,z,w]: [-0.05829021  0.69480485  0.00241879  0.71682816]
+I0213 19:25:53.834122 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.834313 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-1.6154761e-04  1.8465862e+00 -1.1802884e+00  8.6989236e-01
+ -7.7602327e-02 -8.7466583e-02]
+Best IK solution: [-1.6154761e-04  1.8465862e+00 -1.1802884e+00  8.6989236e-01
+ -7.7602327e-02 -8.7466583e-02]
+🌟 IK 求解耗时: 51.62 ms
+[a1x_robot] IK Solution Found - joints: [-1.6154761e-04  1.8465862e+00 -1.1802884e+00  8.6989236e-01
+ -7.7602327e-02 -8.7466583e-02], max joint diff: 0.0408 rad (2.34°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 7, terminate: False
-  0%|                                                                                                  | 7/1000000 [00:09<136:04:38,  2.04it/s]EEF delta: pos=[0.01075279 0.0037481  0.00449436], rot=[ 0.00042261 -0.00962658  0.00579511], gripper: 0.977 -> 0.963 (96.3mm)
-[a1x_robot] Action to be Solved - pos: [0.28974987 0.00674591 0.19968796], quat[x,y,z,w]: [-0.06038875  0.686734    0.0115071   0.72430463]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.258059 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.258443 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04804397  1.8868977  -1.2828114   0.9132783  -0.06896316 -0.05561659]
-Best IK solution: [ 0.04804397  1.8868977  -1.2828114   0.9132783  -0.06896316 -0.05561659]
-🌟 IK 求解耗时: 107.59 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04804397  1.8868977  -1.2828114   0.9132783  -0.06896316 -0.05561659], max joint diff: 0.0632 rad (3.62°)
-⏱️  ✓ 执行耗时=109ms, 误差=0.0mm
+last return: -1.0:   0%|                | 595/992999 [02:07<60:36:40,  4.55it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.          0.          0.         -0.00285714  0.02857143 -0.
+  0.        ], Scaled action: [-0.          0.          0.         -0.00285714  0.02857143 -0.
+  0.        ]
+EEF delta: pos=[-0.  0.  0.], rot=[-0.00285714  0.02857143 -0.        ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.27068667 -0.0079493   0.19082663], quat[x,y,z,w]: [-0.04696464  0.69952243  0.01262317  0.71295396]
+I0213 19:25:53.961418 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:53.961631 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01109832  1.8505856  -1.1833231   0.88196117 -0.04748698 -0.09593626]
+Best IK solution: [-0.01109832  1.8505856  -1.1833231   0.88196117 -0.04748698 -0.09593626]
+🌟 IK 求解耗时: 49.35 ms
+[a1x_robot] IK Solution Found - joints: [-0.01109832  1.8505856  -1.1833231   0.88196117 -0.04748698 -0.09593626], max joint diff: 0.0369 rad (2.11°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 8, terminate: False
-  0%|                                                                                                  | 8/1000000 [00:09<107:02:33,  2.59it/s]EEF delta: pos=[ 0.0089962  -0.00394639  0.00585873], rot=[-0.00518101 -0.00335822 -0.00194792], gripper: 0.977 -> 0.971 (97.1mm)
-[a1x_robot] Action to be Solved - pos: [0.29032389 0.00098755 0.20446244], quat[x,y,z,w]: [-0.05614989  0.6860224   0.00603031  0.72538547]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.419193 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.419398 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.02849371  1.8835287  -1.3030612   0.93345106 -0.06999025 -0.06154813]
-Best IK solution: [ 0.02849371  1.8835287  -1.3030612   0.93345106 -0.06999025 -0.06154813]
-🌟 IK 求解耗时: 100.55 ms
-[a1x_robot] IK Solution Found - joints: [ 0.02849371  1.8835287  -1.3030612   0.93345106 -0.06999025 -0.06154813], max joint diff: 0.0654 rad (3.75°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
+last return: -1.0:   0%|                | 596/992999 [02:07<52:54:13,  5.21it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.    0.   -0.04 -0.   -0.    0.  ], Scaled action: [-0.01  0.    0.   -0.04 -0.   -0.    0.  ]
+EEF delta: pos=[-0.01  0.    0.  ], rot=[-0.04 -0.   -0.  ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25901421 -0.00846287  0.18982085], quat[x,y,z,w]: [-0.06640418  0.69151686 -0.00867331  0.71924939]
+I0213 19:25:54.070290 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.070479 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.00944709  1.801608   -1.1054512   0.83192945 -0.10491646 -0.0745877 ]
+Best IK solution: [ 0.00944709  1.801608   -1.1054512   0.83192945 -0.10491646 -0.0745877 ]
+🌟 IK 求解耗时: 48.24 ms
+[a1x_robot] IK Solution Found - joints: [ 0.00944709  1.801608   -1.1054512   0.83192945 -0.10491646 -0.0745877 ], max joint diff: 0.0458 rad (2.63°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 9, terminate: False
-  0%|                                                                                                   | 9/1000000 [00:09<86:59:33,  3.19it/s]EEF delta: pos=[0.01167697 0.00086547 0.00566349], rot=[ 0.0006757  -0.01552239 -0.0078697 ], gripper: 0.973 -> 0.964 (96.4mm)
-[a1x_robot] Action to be Solved - pos: [0.29762213 0.00355731 0.20659917], quat[x,y,z,w]: [-0.05346099  0.67730171  0.00483354  0.73374447]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.573969 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.574350 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03583425  1.8925185  -1.3264033   0.92431366 -0.06828985 -0.04948819]
-Best IK solution: [ 0.03583425  1.8925185  -1.3264033   0.92431366 -0.06828985 -0.04948819]
-🌟 IK 求解耗时: 106.57 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03583425  1.8925185  -1.3264033   0.92431366 -0.06828985 -0.04948819], max joint diff: 0.0683 rad (3.91°)
-⏱️  ✓ 执行耗时=108ms, 误差=0.0mm
+last return: -1.0:   0%|                | 597/992999 [02:07<46:05:02,  5.98it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.00857143  0.         -0.01       -0.04        0.04       -0.
+  0.        ], Scaled action: [-0.00857143  0.         -0.01       -0.04        0.04       -0.
+  0.        ]
+EEF delta: pos=[-0.00857143  0.         -0.01      ], rot=[-0.04  0.04 -0.  ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.2600052  -0.00826531  0.18024436], quat[x,y,z,w]: [-0.07249334  0.70747014 -0.01023905  0.70294088]
+I0213 19:25:54.180557 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.180793 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.01505998  1.8408988  -1.1081953   0.8411146  -0.11720485 -0.07298258]
+Best IK solution: [ 0.01505998  1.8408988  -1.1081953   0.8411146  -0.11720485 -0.07298258]
+🌟 IK 求解耗时: 51.23 ms
+[a1x_robot] IK Solution Found - joints: [ 0.01505998  1.8408988  -1.1081953   0.8411146  -0.11720485 -0.07298258], max joint diff: 0.0469 rad (2.69°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 10, terminate: False
-  0%|                                                                                                  | 10/1000000 [00:09<73:51:50,  3.76it/s]EEF delta: pos=[ 0.01157989  0.0009878  -0.00060019], rot=[-0.00016624 -0.00951755 -0.00940755], gripper: 0.973 -> 0.965 (96.5mm)
-[a1x_robot] Action to be Solved - pos: [0.30059555 0.00660966 0.20067133], quat[x,y,z,w]: [-0.05541082  0.68045     0.0062275   0.73067   ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.732803 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.733131 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04610909  1.9116     -1.3244585   0.9126593  -0.06969485 -0.0436717 ]
-Best IK solution: [ 0.04610909  1.9116     -1.3244585   0.9126593  -0.06969485 -0.0436717 ]
-🌟 IK 求解耗时: 98.25 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04610909  1.9116     -1.3244585   0.9126593  -0.06969485 -0.0436717 ], max joint diff: 0.0468 rad (2.68°)
+last return: -1.0:   0%|                | 598/992999 [02:07<41:20:39,  6.67it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01       -0.00571429 -0.01       -0.04        0.01142857 -0.
+  0.        ], Scaled action: [-0.01       -0.00571429 -0.01       -0.04        0.01142857 -0.
+  0.        ]
+EEF delta: pos=[-0.01       -0.00571429 -0.01      ], rot=[-0.04        0.01142857 -0.        ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.26044856 -0.01377772  0.18205327], quat[x,y,z,w]: [-0.07237014  0.6962111  -0.01073621  0.71409902]
+I0213 19:25:54.289334 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.289528 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.00654222  1.8212816  -1.0897723   0.8079694  -0.11616751 -0.0957232 ]
+Best IK solution: [-0.00654222  1.8212816  -1.0897723   0.8079694  -0.11616751 -0.0957232 ]
+🌟 IK 求解耗时: 47.63 ms
+[a1x_robot] IK Solution Found - joints: [-0.00654222  1.8212816  -1.0897723   0.8079694  -0.11616751 -0.0957232 ], max joint diff: 0.0787 rad (4.51°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 11, terminate: False
-  0%|                                                                                                  | 11/1000000 [00:10<64:04:10,  4.34it/s]EEF delta: pos=[0.00886283 0.00542747 0.00045747], rot=[-0.00310251 -0.00897584 -0.00723882], gripper: 0.973 -> 0.967 (96.7mm)
-[a1x_robot] Action to be Solved - pos: [0.29935925 0.00799581 0.20438972], quat[x,y,z,w]: [-0.0546285   0.68157315  0.00262478  0.72970328]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:48.886779 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:48.887115 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.05253157  1.9076667  -1.3383158   0.93411076 -0.07432766 -0.03106562]
-Best IK solution: [ 0.05253157  1.9076667  -1.3383158   0.93411076 -0.07432766 -0.03106562]
-🌟 IK 求解耗时: 102.46 ms
-[a1x_robot] IK Solution Found - joints: [ 0.05253157  1.9076667  -1.3383158   0.93411076 -0.07432766 -0.03106562], max joint diff: 0.0400 rad (2.29°)
-⏱️  ✓ 执行耗时=105ms, 误差=0.0mm
+last return: -1.0:   0%|                | 599/992999 [02:07<37:56:25,  7.27it/s] [Actor] Step 7600: actions shape = (7,)
+[SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.04 -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.04 -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0.04 -0.   -0.  ], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.26122115 -0.01722984  0.18275301], quat[x,y,z,w]: [-0.06790956  0.69249866 -0.00714878  0.71818019]
+I0213 19:25:54.398700 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.398946 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.02475365  1.8165884  -1.0873859   0.7979887  -0.10347404 -0.1130977 ]
+Best IK solution: [-0.02475365  1.8165884  -1.0873859   0.7979887  -0.10347404 -0.1130977 ]
+🌟 IK 求解耗时: 50.43 ms
+[a1x_robot] IK Solution Found - joints: [-0.02475365  1.8165884  -1.0873859   0.7979887  -0.10347404 -0.1130977 ], max joint diff: 0.0888 rad (5.09°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 12, terminate: False
-  0%|                                                                                                  | 12/1000000 [00:10<58:00:46,  4.79it/s]EEF delta: pos=[0.00901298 0.00383587 0.00017791], rot=[ 0.00184494 -0.01242235 -0.00591719], gripper: 0.973 -> 0.965 (96.5mm)
-[a1x_robot] Action to be Solved - pos: [0.30589378 0.00772163 0.20696075], quat[x,y,z,w]: [-0.05071314  0.67183412  0.00330621  0.73895613]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.042748 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.043013 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04834134  1.9117764  -1.3563888   0.92095876 -0.06793291 -0.03141693]
-Best IK solution: [ 0.04834134  1.9117764  -1.3563888   0.92095876 -0.06793291 -0.03141693]
-🌟 IK 求解耗时: 104.45 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04834134  1.9117764  -1.3563888   0.92095876 -0.06793291 -0.03141693], max joint diff: 0.0355 rad (2.04°)
-⏱️  ✓ 执行耗时=106ms, 误差=0.0mm
+ [Actor] Step 7600: Transition actions shape = (7,), intervened = True
+last return: -1.0:   0%|                | 600/992999 [02:07<37:16:57,  7.39it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.26051915 -0.01710459  0.18142313], quat[x,y,z,w]: [-0.05200603  0.69281241  0.00570501  0.71921749]
+I0213 19:25:54.527220 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.527440 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.04074195  1.816342   -1.0816941   0.7935369  -0.0622193  -0.12376203]
+Best IK solution: [-0.04074195  1.816342   -1.0816941   0.7935369  -0.0622193  -0.12376203]
+🌟 IK 求解耗时: 54.76 ms
+[a1x_robot] IK Solution Found - joints: [-0.04074195  1.816342   -1.0816941   0.7935369  -0.0622193  -0.12376203], max joint diff: 0.0864 rad (4.95°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 13, terminate: False
-  0%|                                                                                                  | 13/1000000 [00:10<53:43:16,  5.17it/s]EEF delta: pos=[0.00896255 0.00169086 0.0046512 ], rot=[ 0.00215341 -0.01373683 -0.00699074], gripper: 0.973 -> 0.964 (96.4mm)
-[a1x_robot] Action to be Solved - pos: [0.30835994 0.00754634 0.20914955], quat[x,y,z,w]: [-4.94905152e-02  6.72497817e-01  4.11428927e-04  7.38442419e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.199799 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.200138 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04826976  1.9201765  -1.3810006   0.93905234 -0.07055037 -0.0256979 ]
-Best IK solution: [ 0.04826976  1.9201765  -1.3810006   0.93905234 -0.07055037 -0.0256979 ]
-🌟 IK 求解耗时: 114.96 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04826976  1.9201765  -1.3810006   0.93905234 -0.07055037 -0.0256979 ], max joint diff: 0.0542 rad (3.10°)
-⏱️  ✓ 执行耗时=117ms, 误差=0.0mm
+last return: -1.0:   0%|                | 601/992999 [02:07<35:07:51,  7.85it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25832612 -0.01818765  0.17827342], quat[x,y,z,w]: [-0.05825228  0.69417577  0.00082755  0.71744406]
+I0213 19:25:54.636453 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.636698 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.03881567  1.8149538  -1.0616813   0.77809316 -0.07830022 -0.12401596]
+Best IK solution: [-0.03881567  1.8149538  -1.0616813   0.77809316 -0.07830022 -0.12401596]
+🌟 IK 求解耗时: 56.02 ms
+[a1x_robot] IK Solution Found - joints: [-0.03881567  1.8149538  -1.0616813   0.77809316 -0.07830022 -0.12401596], max joint diff: 0.0860 rad (4.93°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 14, terminate: False
-  0%|                                                                                                  | 14/1000000 [00:10<51:30:44,  5.39it/s]EEF delta: pos=[0.00761241 0.011884   0.0015126 ], rot=[-0.00025493  0.0001972   0.00538118], gripper: 0.973 -> 0.962 (96.2mm)
-[a1x_robot] Action to be Solved - pos: [0.30763088 0.01916533 0.20643658], quat[x,y,z,w]: [-0.05479932  0.67893888  0.00371287  0.73213745]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.367842 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.368504 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.08775341  1.9332651  -1.3883982   0.9539452  -0.07563154  0.002137  ]
-Best IK solution: [ 0.08775341  1.9332651  -1.3883982   0.9539452  -0.07563154  0.002137  ]
-🌟 IK 求解耗时: 102.34 ms
-[a1x_robot] IK Solution Found - joints: [ 0.08775341  1.9332651  -1.3883982   0.9539452  -0.07563154  0.002137  ], max joint diff: 0.0516 rad (2.96°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 602/992999 [02:08<33:35:58,  8.20it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.2575523  -0.02061638  0.17506474], quat[x,y,z,w]: [-0.06507695  0.6914188  -0.00194673  0.71951459]
+I0213 19:25:54.745409 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.745614 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.04325781  1.8119462  -1.0384634   0.7492518  -0.09092892 -0.13487153]
+Best IK solution: [-0.04325781  1.8119462  -1.0384634   0.7492518  -0.09092892 -0.13487153]
+🌟 IK 求解耗时: 55.57 ms
+[a1x_robot] IK Solution Found - joints: [-0.04325781  1.8119462  -1.0384634   0.7492518  -0.09092892 -0.13487153], max joint diff: 0.0852 rad (4.88°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 15, terminate: False
-  0%|                                                                                                  | 15/1000000 [00:10<49:00:58,  5.67it/s]EEF delta: pos=[ 0.01344739  0.00282723 -0.00160347], rot=[ 0.00800735 -0.01209133 -0.00260009], gripper: 0.973 -> 0.961 (96.1mm)
-[a1x_robot] Action to be Solved - pos: [0.31851321 0.01051812 0.2063296 ], quat[x,y,z,w]: [-0.04618791  0.66879965  0.00299398  0.7420005 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.522857 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.523057 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.05356108  1.950093   -1.4122635   0.9304034  -0.06293367 -0.01937241]
-Best IK solution: [ 0.05356108  1.950093   -1.4122635   0.9304034  -0.06293367 -0.01937241]
-🌟 IK 求解耗时: 87.53 ms
-[a1x_robot] IK Solution Found - joints: [ 0.05356108  1.950093   -1.4122635   0.9304034  -0.06293367 -0.01937241], max joint diff: 0.0518 rad (2.97°)
+last return: -1.0:   0%|                | 603/992999 [02:08<32:35:02,  8.46it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25645882 -0.02322446  0.17311497], quat[x,y,z,w]: [-0.06434079  0.68953234 -0.00244743  0.72138715]
+I0213 19:25:54.855682 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.855872 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.05411488  1.8081323  -1.0218513   0.7302833  -0.0895923  -0.14422034]
+Best IK solution: [-0.05411488  1.8081323  -1.0218513   0.7302833  -0.0895923  -0.14422034]
+🌟 IK 求解耗时: 51.20 ms
+[a1x_robot] IK Solution Found - joints: [-0.05411488  1.8081323  -1.0218513   0.7302833  -0.0895923  -0.14422034], max joint diff: 0.0841 rad (4.82°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 16, terminate: False
-  0%|                                                                                                  | 16/1000000 [00:10<46:53:47,  5.92it/s]EEF delta: pos=[0.00948914 0.0038713  0.00452961], rot=[ 0.00485059 -0.00694498 -0.01486959], gripper: 0.973 -> 0.968 (96.8mm)
-[a1x_robot] Action to be Solved - pos: [0.31768806 0.01147366 0.21417072], quat[x,y,z,w]: [-0.04143538  0.66853732 -0.00482739  0.74250768]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.675060 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.675514 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.05860187  1.9443135  -1.4443341   0.968169   -0.06872892  0.00319309]
-Best IK solution: [ 0.05860187  1.9443135  -1.4443341   0.968169   -0.06872892  0.00319309]
-🌟 IK 求解耗时: 108.52 ms
-[a1x_robot] IK Solution Found - joints: [ 0.05860187  1.9443135  -1.4443341   0.968169   -0.06872892  0.00319309], max joint diff: 0.0667 rad (3.82°)
-⏱️  ✓ 执行耗时=110ms, 误差=0.0mm
+last return: -1.0:   0%|                | 604/992999 [02:08<31:52:39,  8.65it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25407691 -0.02496969  0.17091027], quat[x,y,z,w]: [-6.23554953e-02  6.90472255e-01 -2.84008939e-04  7.20666204e-01]
+I0213 19:25:54.966232 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:54.966432 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.06393784  1.8051922  -1.0056893   0.7191632  -0.08347113 -0.15403351]
+Best IK solution: [-0.06393784  1.8051922  -1.0056893   0.7191632  -0.08347113 -0.15403351]
+🌟 IK 求解耗时: 50.75 ms
+[a1x_robot] IK Solution Found - joints: [-0.06393784  1.8051922  -1.0056893   0.7191632  -0.08347113 -0.15403351], max joint diff: 0.0830 rad (4.76°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 17, terminate: False
-  0%|                                                                                                  | 17/1000000 [00:11<46:19:07,  6.00it/s]EEF delta: pos=[ 0.01206009 -0.00315525  0.00353947], rot=[ 0.0005918  -0.00129084 -0.0121907 ], gripper: 0.973 -> 0.972 (97.2mm)
-[a1x_robot] Action to be Solved - pos: [0.32495882 0.01194603 0.21237935], quat[x,y,z,w]: [-0.04577944  0.66810953  0.00112107  0.74265244]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:49.837198 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:49.837634 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.05776147  1.9692851  -1.474707    0.97216237 -0.06564861 -0.01212347]
-Best IK solution: [ 0.05776147  1.9692851  -1.474707    0.97216237 -0.06564861 -0.01212347]
-🌟 IK 求解耗时: 117.70 ms
-[a1x_robot] IK Solution Found - joints: [ 0.05776147  1.9692851  -1.474707    0.97216237 -0.06564861 -0.01212347], max joint diff: 0.0802 rad (4.60°)
-⏱️  ✓ 执行耗时=119ms, 误差=0.0mm
+last return: -1.0:   0%|                | 605/992999 [02:08<31:28:16,  8.76it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25186925 -0.02676647  0.16869694], quat[x,y,z,w]: [-0.060431    0.69091881  0.00130699  0.72040099]
+I0213 19:25:55.075307 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.075500 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.0737661   1.8022634  -0.9892854   0.7064928  -0.07814271 -0.16320209]
+Best IK solution: [-0.0737661   1.8022634  -0.9892854   0.7064928  -0.07814271 -0.16320209]
+🌟 IK 求解耗时: 55.81 ms
+[a1x_robot] IK Solution Found - joints: [-0.0737661   1.8022634  -0.9892854   0.7064928  -0.07814271 -0.16320209], max joint diff: 0.0820 rad (4.70°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 18, terminate: False
-  0%|                                                                                                  | 18/1000000 [00:11<46:41:23,  5.95it/s]EEF delta: pos=[ 0.00742559 -0.00272337  0.00517879], rot=[ 0.00353181 -0.00125128 -0.01305003], gripper: 0.973 -> 0.972 (97.2mm)
-[a1x_robot] Action to be Solved - pos: [0.32376373 0.00890576 0.21448127], quat[x,y,z,w]: [-0.03905621  0.66857505 -0.00301727  0.74261222]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.007344 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.007751 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04733063  1.9644735  -1.4782368   0.9809824  -0.06169246 -0.00693417]
-Best IK solution: [ 0.04733063  1.9644735  -1.4782368   0.9809824  -0.06169246 -0.00693417]
-🌟 IK 求解耗时: 102.24 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04733063  1.9644735  -1.4782368   0.9809824  -0.06169246 -0.00693417], max joint diff: 0.0636 rad (3.64°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 606/992999 [02:08<31:02:20,  8.88it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01 -0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01 -0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25184576 -0.02853869  0.1667111 ], quat[x,y,z,w]: [-6.22942404e-02  6.87598426e-01  6.04200145e-04  7.23413759e-01]
+I0213 19:25:55.185123 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.185317 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.07987803  1.7999697  -0.97401035  0.6835945  -0.08026473 -0.17143048]
+Best IK solution: [-0.07987803  1.7999697  -0.97401035  0.6835945  -0.08026473 -0.17143048]
+🌟 IK 求解耗时: 51.66 ms
+[a1x_robot] IK Solution Found - joints: [-0.07987803  1.7999697  -0.97401035  0.6835945  -0.08026473 -0.17143048], max joint diff: 0.0813 rad (4.66°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 19, terminate: False
-  0%|                                                                                                  | 19/1000000 [00:11<45:36:03,  6.09it/s]EEF delta: pos=[0.00666164 0.0056329  0.00352822], rot=[-0.00222285  0.00079266 -0.00654921], gripper: 0.973 -> 0.969 (96.9mm)
-[a1x_robot] Action to be Solved - pos: [0.32404679 0.0164506  0.21690647], quat[x,y,z,w]: [-0.03971504  0.66897781 -0.00844136  0.74217259]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.163057 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.163370 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.07425051  1.9680862  -1.4967306   0.9993657  -0.073334    0.02625972]
-Best IK solution: [ 0.07425051  1.9680862  -1.4967306   0.9993657  -0.073334    0.02625972]
-🌟 IK 求解耗时: 94.54 ms
-[a1x_robot] IK Solution Found - joints: [ 0.07425051  1.9680862  -1.4967306   0.9993657  -0.073334    0.02625972], max joint diff: 0.0580 rad (3.32°)
+last return: -1.0:   0%|                | 607/992999 [02:08<30:50:04,  8.94it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01  0.   -0.01], rot=[-0. -0. -0.], gripper: 0.652 -> 0.652 (65.2mm)
+[a1x_robot] Action to be Solved - pos: [ 0.25022463 -0.02088657  0.1640658 ], quat[x,y,z,w]: [-6.41461879e-02  6.86591052e-01  2.40191808e-04  7.24208489e-01]
+I0213 19:25:55.294790 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.295007 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.04805554  1.796194   -0.953244    0.6662457  -0.08499255 -0.14188923]
+Best IK solution: [-0.04805554  1.796194   -0.953244    0.6662457  -0.08499255 -0.14188923]
+🌟 IK 求解耗时: 54.43 ms
+[a1x_robot] IK Solution Found - joints: [-0.04805554  1.796194   -0.953244    0.6662457  -0.08499255 -0.14188923], max joint diff: 0.0821 rad (4.70°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 20, terminate: False
-  0%|                                                                                                  | 20/1000000 [00:11<44:31:32,  6.24it/s]EEF delta: pos=[ 0.00893378 -0.00084381  0.00492682], rot=[-6.07171096e-05 -8.77704844e-03 -9.71405488e-03], gripper: 0.973 -> 0.959 (95.9mm)
-[a1x_robot] Action to be Solved - pos: [0.3307487  0.00949516 0.21994417], quat[x,y,z,w]: [-0.03785153  0.66412358 -0.00521239  0.74664581]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.314821 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.315183 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 4.8765264e-02  1.9804835e+00 -1.5315666e+00  1.0065298e+00
- -6.3771196e-02 -1.1827903e-03]
-Best IK solution: [ 4.8765264e-02  1.9804835e+00 -1.5315666e+00  1.0065298e+00
- -6.3771196e-02 -1.1827903e-03]
-🌟 IK 求解耗时: 101.90 ms
-[a1x_robot] IK Solution Found - joints: [ 4.8765264e-02  1.9804835e+00 -1.5315666e+00  1.0065298e+00
- -6.3771196e-02 -1.1827903e-03], max joint diff: 0.0652 rad (3.73°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 608/992999 [02:08<30:40:07,  8.99it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01  0.   -0.01], rot=[-0. -0. -0.], gripper: 0.651 -> 0.651 (65.1mm)
+[a1x_robot] Action to be Solved - pos: [ 0.24749139 -0.02332349  0.16129913], quat[x,y,z,w]: [-0.06376212  0.68726957  0.00116066  0.72359767]
+I0213 19:25:55.405293 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.405489 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.05938035  1.7930743  -0.9329983   0.6501574  -0.08263032 -0.15385808]
+Best IK solution: [-0.05938035  1.7930743  -0.9329983   0.6501574  -0.08263032 -0.15385808]
+🌟 IK 求解耗时: 47.37 ms
+[a1x_robot] IK Solution Found - joints: [-0.05938035  1.7930743  -0.9329983   0.6501574  -0.08263032 -0.15385808], max joint diff: 0.0815 rad (4.67°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 21, terminate: False
-  0%|                                                                                                  | 21/1000000 [00:11<44:08:02,  6.29it/s]EEF delta: pos=[6.26383023e-03 4.71828971e-05 7.29555590e-03], rot=[-0.00142222  0.00583985 -0.0072399 ], gripper: 0.973 -> 0.966 (96.6mm)
-[a1x_robot] Action to be Solved - pos: [0.3301861  0.00975938 0.22251389], quat[x,y,z,w]: [-0.03717356  0.66868774 -0.0062234   0.74258744]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.470120 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.470443 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04977396  1.9862962  -1.5558633   1.0373971  -0.06418605  0.00261199]
-Best IK solution: [ 0.04977396  1.9862962  -1.5558633   1.0373971  -0.06418605  0.00261199]
-🌟 IK 求解耗时: 104.63 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04977396  1.9862962  -1.5558633   1.0373971  -0.06418605  0.00261199], max joint diff: 0.0795 rad (4.55°)
-⏱️  ✓ 执行耗时=106ms, 误差=0.0mm
+last return: -1.0:   0%|                | 609/992999 [02:08<30:35:54,  9.01it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01  0.   -0.01], rot=[-0. -0. -0.], gripper: 0.651 -> 0.651 (65.1mm)
+[a1x_robot] Action to be Solved - pos: [ 0.24625069 -0.02544443  0.1591537 ], quat[x,y,z,w]: [-0.06326351  0.68558518  0.00140045  0.72523702]
+I0213 19:25:55.515057 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.515255 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.06913762  1.7902454  -0.9162512   0.63089156 -0.08045813 -0.16338997]
+Best IK solution: [-0.06913762  1.7902454  -0.9162512   0.63089156 -0.08045813 -0.16338997]
+🌟 IK 求解耗时: 55.08 ms
+[a1x_robot] IK Solution Found - joints: [-0.06913762  1.7902454  -0.9162512   0.63089156 -0.08045813 -0.16338997], max joint diff: 0.0810 rad (4.64°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 22, terminate: False
-  0%|                                                                                                  | 22/1000000 [00:11<44:05:18,  6.30it/s]EEF delta: pos=[ 0.00840855 -0.00519084  0.00519703], rot=[-0.00247611  0.01186312 -0.00918273], gripper: 0.973 -> 0.956 (95.6mm)
-[a1x_robot] Action to be Solved - pos: [0.33436687 0.00811607 0.22373753], quat[x,y,z,w]: [-0.03797065  0.67062841 -0.00790514  0.74077883]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.635058 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.636403 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 4.5164194e-02  2.0046732e+00 -1.5929927e+00  1.0612773e+00
- -6.7159057e-02 -7.2443107e-04]
-Best IK solution: [ 4.5164194e-02  2.0046732e+00 -1.5929927e+00  1.0612773e+00
- -6.7159057e-02 -7.2443107e-04]
-🌟 IK 求解耗时: 120.73 ms
-[a1x_robot] IK Solution Found - joints: [ 4.5164194e-02  2.0046732e+00 -1.5929927e+00  1.0612773e+00
- -6.7159057e-02 -7.2443107e-04], max joint diff: 0.0883 rad (5.06°)
-⏱️  ✓ 执行耗时=124ms, 误差=0.0mm
+last return: -1.0:   0%|                | 610/992999 [02:08<31:35:06,  8.73it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.01  0.   -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.01  0.   -0.01], rot=[-0. -0. -0.], gripper: 0.651 -> 0.651 (65.1mm)
+[a1x_robot] Action to be Solved - pos: [ 0.24478203 -0.02688726  0.15726238], quat[x,y,z,w]: [-6.27452058e-02  6.84704450e-01  1.33511238e-05  7.26114905e-01]
+I0213 19:25:55.637409 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.637613 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.0751538   1.7875693  -0.901146    0.61546296 -0.08106805 -0.16684628]
+Best IK solution: [-0.0751538   1.7875693  -0.901146    0.61546296 -0.08106805 -0.16684628]
+🌟 IK 求解耗时: 51.65 ms
+[a1x_robot] IK Solution Found - joints: [-0.0751538   1.7875693  -0.901146    0.61546296 -0.08106805 -0.16684628], max joint diff: 0.0806 rad (4.62°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 23, terminate: False
-  0%|                                                                                                  | 23/1000000 [00:11<45:33:26,  6.10it/s]EEF delta: pos=[ 0.00737059 -0.00097707  0.00459956], rot=[ 0.0033818   0.00518953 -0.01025233], gripper: 0.973 -> 0.962 (96.2mm)
-[a1x_robot] Action to be Solved - pos: [0.33633245 0.00892822 0.22569787], quat[x,y,z,w]: [-0.03338219  0.6678129  -0.00788536  0.74353842]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.804774 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.805084 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04547777  2.0067546  -1.6061972   1.0645834  -0.0612038   0.0061128 ]
-Best IK solution: [ 0.04547777  2.0067546  -1.6061972   1.0645834  -0.0612038   0.0061128 ]
-🌟 IK 求解耗时: 99.08 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04547777  2.0067546  -1.6061972   1.0645834  -0.0612038   0.0061128 ], max joint diff: 0.0741 rad (4.24°)
-⏱️  ✓ 执行耗时=101ms, 误差=0.0mm
+last return: -1.0:   0%|                | 611/992999 [02:09<31:07:51,  8.85it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.03142857 -0.         -0.
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.03142857 -0.         -0.
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.03142857 -0.         -0.        ], gripper: 0.647 -> 0.647 (64.7mm)
+[a1x_robot] Action to be Solved - pos: [ 0.24339858 -0.01624414  0.15517161], quat[x,y,z,w]: [-0.07325592  0.68361233 -0.01169981  0.72606533]
+I0213 19:25:55.747851 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.748042 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01708709  1.7847806  -0.88281095  0.60125273 -0.1162784  -0.10830163]
+Best IK solution: [-0.01708709  1.7847806  -0.88281095  0.60125273 -0.1162784  -0.10830163]
+🌟 IK 求解耗时: 55.12 ms
+[a1x_robot] IK Solution Found - joints: [-0.01708709  1.7847806  -0.88281095  0.60125273 -0.1162784  -0.10830163], max joint diff: 0.0825 rad (4.73°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 24, terminate: False
-  0%|                                                                                                  | 24/1000000 [00:12<44:36:04,  6.23it/s]EEF delta: pos=[0.00568572 0.00094538 0.00360625], rot=[0.00054621 0.00335438 0.00162053], gripper: 0.971 -> 0.964 (96.4mm)
-[a1x_robot] Action to be Solved - pos: [0.33566771 0.00991784 0.22627106], quat[x,y,z,w]: [-0.03678959  0.66854348 -0.00618729  0.74273674]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:50.956611 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:50.956907 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04924605  2.0059288  -1.6079861   1.0694355  -0.06358002  0.00259407]
-Best IK solution: [ 0.04924605  2.0059288  -1.6079861   1.0694355  -0.06358002  0.00259407]
-🌟 IK 求解耗时: 99.42 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04924605  2.0059288  -1.6079861   1.0694355  -0.06358002  0.00259407], max joint diff: 0.0571 rad (3.27°)
-⏱️  ✓ 执行耗时=101ms, 误差=0.0mm
+last return: -1.0:   0%|                | 612/992999 [02:09<30:54:02,  8.92it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.04        0.01714286 -0.04
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.04        0.01714286 -0.04
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04        0.01714286 -0.04      ], gripper: 0.647 -> 0.647 (64.7mm)
+[a1x_robot] Action to be Solved - pos: [ 0.2421078  -0.01551515  0.15236117], quat[x,y,z,w]: [-0.0637149   0.68894946 -0.0275278   0.72147853]
+I0213 19:25:55.858108 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.858320 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.00942669  1.7945036  -0.8797392   0.60521966 -0.12738606 -0.06397179]
+Best IK solution: [-0.00942669  1.7945036  -0.8797392   0.60521966 -0.12738606 -0.06397179]
+🌟 IK 求解耗时: 52.81 ms
+[a1x_robot] IK Solution Found - joints: [-0.00942669  1.7945036  -0.8797392   0.60521966 -0.12738606 -0.06397179], max joint diff: 0.0956 rad (5.48°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 25, terminate: False
-  0%|                                                                                                  | 25/1000000 [00:12<43:54:00,  6.33it/s]EEF delta: pos=[0.00718755 0.00119688 0.00353622], rot=[-0.00072536  0.01029947 -0.00513318], gripper: 0.970 -> 0.967 (96.7mm)
-[a1x_robot] Action to be Solved - pos: [0.34019062 0.01041445 0.22924594], quat[x,y,z,w]: [-0.03342612  0.67198477 -0.00891582  0.73975649]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.111968 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.112309 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.0498365   2.029664   -1.6644506   1.1115587  -0.06290291  0.01215187]
-Best IK solution: [ 0.0498365   2.029664   -1.6644506   1.1115587  -0.06290291  0.01215187]
-🌟 IK 求解耗时: 126.44 ms
-[a1x_robot] IK Solution Found - joints: [ 0.0498365   2.029664   -1.6644506   1.1115587  -0.06290291  0.01215187], max joint diff: 0.0774 rad (4.44°)
-⏱️  ✓ 执行耗时=129ms, 误差=0.0mm
+last return: -1.0:   0%|                | 613/992999 [02:09<30:42:24,  8.98it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04 -0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04 -0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04 -0.04], gripper: 0.647 -> 0.647 (64.7mm)
+[a1x_robot] Action to be Solved - pos: [ 0.24007312 -0.0159667   0.14950337], quat[x,y,z,w]: [-0.0642492   0.69617742 -0.02632901  0.7145039 ]
+I0213 19:25:55.967332 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:55.967551 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01152176  1.8040321  -0.87687147  0.61263144 -0.12707531 -0.06725142]
+Best IK solution: [-0.01152176  1.8040321  -0.87687147  0.61263144 -0.12707531 -0.06725142]
+🌟 IK 求解耗时: 65.09 ms
+[a1x_robot] IK Solution Found - joints: [-0.01152176  1.8040321  -0.87687147  0.61263144 -0.12707531 -0.06725142], max joint diff: 0.0957 rad (5.48°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 26, terminate: False
-  0%|                                                                                                  | 26/1000000 [00:12<45:55:43,  6.05it/s]EEF delta: pos=[ 0.0111896  -0.0100691   0.00652912], rot=[ 0.00666748  0.01323553 -0.00748575], gripper: 0.970 -> 0.950 (95.0mm)
-[a1x_robot] Action to be Solved - pos: [ 0.3470833  -0.00047354  0.2331165 ], quat[x,y,z,w]: [-0.03036754  0.67145112 -0.00699518  0.74039332]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.292494 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.292844 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01440644  2.0540037  -1.7266018   1.1456395  -0.05257363 -0.0212686 ]
-Best IK solution: [ 0.01440644  2.0540037  -1.7266018   1.1456395  -0.05257363 -0.0212686 ]
-🌟 IK 求解耗时: 102.87 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01440644  2.0540037  -1.7266018   1.1456395  -0.05257363 -0.0212686 ], max joint diff: 0.1228 rad (7.03°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 614/992999 [02:09<30:36:25,  9.01it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.04        0.04       -0.00857143
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.04        0.04       -0.00857143
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04        0.04       -0.00857143], gripper: 0.647 -> 0.647 (64.7mm)
+[a1x_robot] Action to be Solved - pos: [ 0.2373913  -0.01656545  0.14774837], quat[x,y,z,w]: [-0.0748825   0.69654452 -0.01550365  0.71342692]
+I0213 19:25:56.078093 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.078298 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01449159  1.7990081  -0.8591284   0.59965354 -0.12633502 -0.10065352]
+Best IK solution: [-0.01449159  1.7990081  -0.8591284   0.59965354 -0.12633502 -0.10065352]
+🌟 IK 求解耗时: 52.72 ms
+[a1x_robot] IK Solution Found - joints: [-0.01449159  1.7990081  -0.8591284   0.59965354 -0.12633502 -0.10065352], max joint diff: 0.0642 rad (3.68°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 27, terminate: False
-  0%|                                                                                                  | 27/1000000 [00:12<45:12:52,  6.14it/s]EEF delta: pos=[ 0.00262092 -0.00188645  0.00554257], rot=[0.00229715 0.01011308 0.00506779], gripper: 0.970 -> 0.956 (95.6mm)
-[a1x_robot] Action to be Solved - pos: [0.33907731 0.00757056 0.23194957], quat[x,y,z,w]: [-0.03654086  0.67023814 -0.0037255   0.74123662]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.447858 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.448178 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04030551  2.0217652  -1.6649219   1.1143637  -0.05858411 -0.00910487]
-Best IK solution: [ 0.04030551  2.0217652  -1.6649219   1.1143637  -0.05858411 -0.00910487]
-🌟 IK 求解耗时: 104.64 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04030551  2.0217652  -1.6649219   1.1143637  -0.05858411 -0.00910487], max joint diff: 0.0581 rad (3.33°)
-⏱️  ✓ 执行耗时=106ms, 误差=0.0mm
+last return: -1.0:   0%|                | 615/992999 [02:09<30:33:43,  9.02it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04 -0.    0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04 -0.    0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04 -0.  ], gripper: 0.647 -> 0.647 (64.7mm)
+[a1x_robot] Action to be Solved - pos: [ 0.2356111  -0.01654453  0.1467908 ], quat[x,y,z,w]: [-0.07838416  0.69751529 -0.01784287  0.71204633]
+I0213 19:25:56.188761 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.188962 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [-0.01077999  1.797187   -0.85010785  0.59570444 -0.13487484 -0.09851992]
+Best IK solution: [-0.01077999  1.797187   -0.85010785  0.59570444 -0.13487484 -0.09851992]
+🌟 IK 求解耗时: 143.03 ms
+[a1x_robot] IK Solution Found - joints: [-0.01077999  1.797187   -0.85010785  0.59570444 -0.13487484 -0.09851992], max joint diff: 0.0588 rad (3.37°)
+⏱️  ✓ 执行耗时=145ms, 误差=0.0mm
 Step done: False, reward: False, path length: 28, terminate: False
-  0%|                                                                                                  | 28/1000000 [00:12<44:49:40,  6.20it/s]EEF delta: pos=[ 0.00363135 -0.00160689  0.00486548], rot=[ 0.00481628  0.01152307 -0.0051437 ], gripper: 0.970 -> 0.951 (95.1mm)
-[a1x_robot] Action to be Solved - pos: [0.34054645 0.00774589 0.2358277 ], quat[x,y,z,w]: [-0.03149896  0.67707162 -0.00516155  0.73522459]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.605921 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.606230 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 3.9084233e-02  2.0415199e+00 -1.7207489e+00  1.1687429e+00
- -5.3475004e-02 -3.9122978e-04]
-Best IK solution: [ 3.9084233e-02  2.0415199e+00 -1.7207489e+00  1.1687429e+00
- -5.3475004e-02 -3.9122978e-04]
-🌟 IK 求解耗时: 114.03 ms
-[a1x_robot] IK Solution Found - joints: [ 3.9084233e-02  2.0415199e+00 -1.7207489e+00  1.1687429e+00
- -5.3475004e-02 -3.9122978e-04], max joint diff: 0.0631 rad (3.61°)
-⏱️  ✓ 执行耗时=116ms, 误差=0.0mm
+last return: -1.0:   0%|                | 616/992999 [02:09<34:14:22,  8.05it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.04        0.02285714  0.04
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.04        0.02285714  0.04
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04        0.02285714  0.04      ], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.23421811 -0.01324469  0.14564081], quat[x,y,z,w]: [-0.08799808  0.69114964 -0.01688092  0.71713565]
+I0213 19:25:56.343158 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.343499 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.00846529  1.7863486  -0.8261406   0.5672949  -0.14673541 -0.09562756]
+Best IK solution: [ 0.00846529  1.7863486  -0.8261406   0.5672949  -0.14673541 -0.09562756]
+🌟 IK 求解耗时: 55.32 ms
+[a1x_robot] IK Solution Found - joints: [ 0.00846529  1.7863486  -0.8261406   0.5672949  -0.14673541 -0.09562756], max joint diff: 0.0658 rad (3.77°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 29, terminate: False
-  0%|                                                                                                  | 29/1000000 [00:12<45:16:05,  6.14it/s]EEF delta: pos=[ 0.00908468 -0.00125674  0.00541407], rot=[ 0.00795305  0.00684975 -0.00143514], gripper: 0.964 -> 0.946 (94.6mm)
-[a1x_robot] Action to be Solved - pos: [ 3.54086933e-01 -2.54925877e-04  2.40973722e-01], quat[x,y,z,w]: [-0.02838127  0.67021364 -0.00400633  0.74161455]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.772618 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.772928 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01259273  2.0832634  -1.8194304   1.205649   -0.04527962 -0.02421754]
-Best IK solution: [ 0.01259273  2.0832634  -1.8194304   1.205649   -0.04527962 -0.02421754]
-🌟 IK 求解耗时: 102.94 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01259273  2.0832634  -1.8194304   1.205649   -0.04527962 -0.02421754], max joint diff: 0.1062 rad (6.09°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 617/992999 [02:09<33:00:20,  8.35it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.04        0.01714286  0.04
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.04        0.01714286  0.04
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04        0.01714286  0.04      ], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.23320115 -0.01085734  0.14434418], quat[x,y,z,w]: [-0.08292137  0.6903283  -0.02495566  0.71829527]
+I0213 19:25:56.452272 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.452478 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.02101409  1.7855628  -0.8165602   0.5588113  -0.15184388 -0.06451267]
+Best IK solution: [ 0.02101409  1.7855628  -0.8165602   0.5588113  -0.15184388 -0.06451267]
+🌟 IK 求解耗时: 262.88 ms
+[a1x_robot] IK Solution Found - joints: [ 0.02101409  1.7855628  -0.8165602   0.5588113  -0.15184388 -0.06451267], max joint diff: 0.0694 rad (3.98°)
+⏱️  ✓ 执行耗时=264ms, 误差=0.0mm
 Step done: False, reward: False, path length: 30, terminate: False
-  0%|                                                                                                  | 30/1000000 [00:13<44:38:46,  6.22it/s]EEF delta: pos=[ 0.00711891 -0.00443602  0.00324047], rot=[0.00677821 0.01504168 0.0043217 ], gripper: 0.964 -> 0.940 (94.0mm)
-[a1x_robot] Action to be Solved - pos: [0.35083758 0.00097074 0.23438423], quat[x,y,z,w]: [-0.03317911  0.67308584 -0.00152428  0.73881816]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:51.927946 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:51.928308 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01717911  2.072676   -1.7664572   1.171247   -0.0485466  -0.02991829]
-Best IK solution: [ 0.01717911  2.072676   -1.7664572   1.171247   -0.0485466  -0.02991829]
-🌟 IK 求解耗时: 108.81 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01717911  2.072676   -1.7664572   1.171247   -0.0485466  -0.02991829], max joint diff: 0.0860 rad (4.93°)
-⏱️  ✓ 执行耗时=111ms, 误差=0.0mm
+last return: -1.0:   0%|                | 618/992999 [02:09<45:43:25,  6.03it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.23024808 -0.00809808  0.14061464], quat[x,y,z,w]: [-0.09343456  0.70069248 -0.02557942  0.70685622]
+I0213 19:25:56.727964 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.728169 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.04070238  1.8013583  -0.81486773  0.5742278  -0.16843575 -0.05648973]
+Best IK solution: [ 0.04070238  1.8013583  -0.81486773  0.5742278  -0.16843575 -0.05648973]
+🌟 IK 求解耗时: 48.08 ms
+[a1x_robot] IK Solution Found - joints: [ 0.04070238  1.8013583  -0.81486773  0.5742278  -0.16843575 -0.05648973], max joint diff: 0.0609 rad (3.49°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 31, terminate: False
-  0%|                                                                                                  | 31/1000000 [00:13<44:40:43,  6.22it/s]EEF delta: pos=[ 0.00776918 -0.00382613  0.00639252], rot=[-0.00022974  0.01057699  0.00690793], gripper: 0.964 -> 0.949 (94.9mm)
-[a1x_robot] Action to be Solved - pos: [0.3466605  0.00315611 0.24150638], quat[x,y,z,w]: [-0.03472911  0.68192046 -0.0015105   0.73059982]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.093905 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.094238 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.024513    2.0777636  -1.8150207   1.239175   -0.05129948 -0.0242816 ]
-Best IK solution: [ 0.024513    2.0777636  -1.8150207   1.239175   -0.05129948 -0.0242816 ]
-🌟 IK 求解耗时: 118.90 ms
-[a1x_robot] IK Solution Found - joints: [ 0.024513    2.0777636  -1.8150207   1.239175   -0.05129948 -0.0242816 ], max joint diff: 0.1059 rad (6.07°)
-⏱️  ✓ 执行耗时=121ms, 误差=0.0mm
+last return: -1.0:   0%|                | 619/992999 [02:10<41:15:51,  6.68it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.22882183 -0.0062683   0.13789703], quat[x,y,z,w]: [-0.10526252  0.69950748 -0.0209301   0.70652036]
+I0213 19:25:56.838050 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.838239 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.05353975  1.8018471  -0.7972374   0.55500096 -0.17862722 -0.06727824]
+Best IK solution: [ 0.05353975  1.8018471  -0.7972374   0.55500096 -0.17862722 -0.06727824]
+🌟 IK 求解耗时: 50.20 ms
+[a1x_robot] IK Solution Found - joints: [ 0.05353975  1.8018471  -0.7972374   0.55500096 -0.17862722 -0.06727824], max joint diff: 0.0616 rad (3.53°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 32, terminate: False
-  0%|                                                                                                  | 32/1000000 [00:13<45:58:52,  6.04it/s]EEF delta: pos=[0.00810926 0.00144115 0.00531965], rot=[0.00967007 0.00678193 0.00013914], gripper: 0.955 -> 0.935 (93.5mm)
-[a1x_robot] Action to be Solved - pos: [0.35816072 0.002324   0.24876453], quat[x,y,z,w]: [-2.63489141e-02  6.70416867e-01  8.82307837e-05  7.41516656e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.266479 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.266827 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01722991  2.1072106  -1.904398    1.2672819  -0.03693344 -0.02208459]
-Best IK solution: [ 0.01722991  2.1072106  -1.904398    1.2672819  -0.03693344 -0.02208459]
-🌟 IK 求解耗时: 114.67 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01722991  2.1072106  -1.904398    1.2672819  -0.03693344 -0.02208459], max joint diff: 0.1076 rad (6.16°)
-⏱️  ✓ 执行耗时=116ms, 误差=0.0mm
+last return: -1.0:   0%|                | 620/992999 [02:10<41:02:38,  6.72it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.22588619 -0.00411034  0.13605124], quat[x,y,z,w]: [-0.11474299  0.70074277 -0.01696354  0.70392177]
+I0213 19:25:56.985364 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:56.985556 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.06740141  1.8002102  -0.7822212   0.5478551  -0.1865179  -0.0720598 ]
+Best IK solution: [ 0.06740141  1.8002102  -0.7822212   0.5478551  -0.1865179  -0.0720598 ]
+🌟 IK 求解耗时: 47.71 ms
+[a1x_robot] IK Solution Found - joints: [ 0.06740141  1.8002102  -0.7822212   0.5478551  -0.1865179  -0.0720598 ], max joint diff: 0.0627 rad (3.59°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 33, terminate: False
-  0%|                                                                                                  | 33/1000000 [00:13<46:12:51,  6.01it/s]EEF delta: pos=[ 0.01064873 -0.00092005  0.00071572], rot=[ 0.003101   -0.00075676  0.00237654], gripper: 0.955 -> 0.932 (93.2mm)
-[a1x_robot] Action to be Solved - pos: [0.36168895 0.00049627 0.23834612], quat[x,y,z,w]: [-3.17124729e-02  6.71251108e-01 -2.63066300e-04  7.40551281e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.434299 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.434771 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01414471  2.116021   -1.8648676   1.221153   -0.044369   -0.03259578]
-Best IK solution: [ 0.01414471  2.116021   -1.8648676   1.221153   -0.044369   -0.03259578]
-🌟 IK 求解耗时: 107.52 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01414471  2.116021   -1.8648676   1.221153   -0.044369   -0.03259578], max joint diff: 0.0830 rad (4.75°)
-⏱️  ✓ 执行耗时=110ms, 误差=0.0mm
+last return: -1.0:   0%|                | 621/992999 [02:10<37:49:32,  7.29it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.22481745 -0.00295565  0.13525833], quat[x,y,z,w]: [-0.11398776  0.70119812 -0.02045453  0.70349811]
+I0213 19:25:57.093981 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.094167 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.0746452   1.8004198  -0.77695024  0.54560655 -0.19042972 -0.05850133]
+Best IK solution: [ 0.0746452   1.8004198  -0.77695024  0.54560655 -0.19042972 -0.05850133]
+🌟 IK 求解耗时: 51.54 ms
+[a1x_robot] IK Solution Found - joints: [ 0.0746452   1.8004198  -0.77695024  0.54560655 -0.19042972 -0.05850133], max joint diff: 0.0632 rad (3.62°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 34, terminate: False
-  0%|                                                                                                  | 34/1000000 [00:13<45:45:34,  6.07it/s]EEF delta: pos=[ 0.00728884 -0.00071461  0.00479995], rot=[-0.00045061  0.01259343 -0.00240968], gripper: 0.955 -> 0.943 (94.3mm)
-[a1x_robot] Action to be Solved - pos: [0.35368024 0.0019434  0.2459082 ], quat[x,y,z,w]: [-0.0320121   0.6869951  -0.00217448  0.72595332]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.595710 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.596022 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01970084  2.1222754  -1.9199259   1.3132144  -0.04825794 -0.02386292]
-Best IK solution: [ 0.01970084  2.1222754  -1.9199259   1.3132144  -0.04825794 -0.02386292]
-🌟 IK 求解耗时: 98.92 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01970084  2.1222754  -1.9199259   1.3132144  -0.04825794 -0.02386292], max joint diff: 0.1078 rad (6.18°)
+last return: -1.0:   0%|                | 622/992999 [02:10<35:28:29,  7.77it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [ 0.22299055 -0.00095118  0.13399645], quat[x,y,z,w]: [-0.11718321  0.70355976 -0.0243198   0.70048577]
+I0213 19:25:57.204319 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.204509 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.08879421  1.8035386  -0.771983    0.5482711  -0.20028919 -0.04238258]
+Best IK solution: [ 0.08879421  1.8035386  -0.771983    0.5482711  -0.20028919 -0.04238258]
+🌟 IK 求解耗时: 48.76 ms
+[a1x_robot] IK Solution Found - joints: [ 0.08879421  1.8035386  -0.771983    0.5482711  -0.20028919 -0.04238258], max joint diff: 0.0639 rad (3.66°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 35, terminate: False
-  0%|                                                                                                  | 35/1000000 [00:13<44:45:11,  6.21it/s]EEF delta: pos=[ 0.00605864 -0.00139839  0.00343556], rot=[ 0.00810453  0.01180465 -0.00876195], gripper: 0.948 -> 0.932 (93.2mm)
-[a1x_robot] Action to be Solved - pos: [0.36053383 0.00133882 0.25237565], quat[x,y,z,w]: [-2.09887848e-02  6.75442943e-01  4.40093813e-05  7.37113491e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.749599 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.749892 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01219234  2.133199   -1.9731997   1.3234327  -0.02935618 -0.01886697]
-Best IK solution: [ 0.01219234  2.133199   -1.9731997   1.3234327  -0.02935618 -0.01886697]
-🌟 IK 求解耗时: 109.30 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01219234  2.133199   -1.9731997   1.3234327  -0.02935618 -0.01886697], max joint diff: 0.0943 rad (5.40°)
-⏱️  ✓ 执行耗时=111ms, 误差=0.0mm
+last return: -1.0:   0%|                | 623/992999 [02:10<33:56:41,  8.12it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.01  0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [0.22118464 0.00149631 0.13160517], quat[x,y,z,w]: [-0.12663336  0.70475989 -0.0232947   0.69766385]
+I0213 19:25:57.314631 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.314830 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.10599919  1.8079284  -0.76104957  0.5411284  -0.21198255 -0.03926926]
+Best IK solution: [ 0.10599919  1.8079284  -0.76104957  0.5411284  -0.21198255 -0.03926926]
+🌟 IK 求解耗时: 47.66 ms
+[a1x_robot] IK Solution Found - joints: [ 0.10599919  1.8079284  -0.76104957  0.5411284  -0.21198255 -0.03926926], max joint diff: 0.0639 rad (3.66°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 36, terminate: False
-  0%|                                                                                                  | 36/1000000 [00:14<44:58:40,  6.18it/s]EEF delta: pos=[ 0.00802795  0.00201165 -0.00168222], rot=[0.00620606 0.00552776 0.00474169], gripper: 0.948 -> 0.930 (93.0mm)
-[a1x_robot] Action to be Solved - pos: [0.36930468 0.00324509 0.24212763], quat[x,y,z,w]: [-0.02993823  0.66784309  0.00285467  0.74369426]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:52.911459 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:52.911854 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01946387  2.1454763  -1.9388261   1.2566161  -0.03785058 -0.02903393]
-Best IK solution: [ 0.01946387  2.1454763  -1.9388261   1.2566161  -0.03785058 -0.02903393]
-🌟 IK 求解耗时: 109.24 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01946387  2.1454763  -1.9388261   1.2566161  -0.03785058 -0.02903393], max joint diff: 0.0635 rad (3.64°)
-⏱️  ✓ 执行耗时=111ms, 误差=0.0mm
+last return: -1.0:   0%|                | 624/992999 [02:10<32:53:35,  8.38it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.    0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [0.22846574 0.00429144 0.12882386], quat[x,y,z,w]: [-0.13597906  0.70693025 -0.01931133  0.69382014]
+I0213 19:25:57.424374 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.424577 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.11807469  1.8403145  -0.78983814  0.5470129  -0.21924661 -0.04517846]
+Best IK solution: [ 0.11807469  1.8403145  -0.78983814  0.5470129  -0.21924661 -0.04517846]
+🌟 IK 求解耗时: 48.88 ms
+[a1x_robot] IK Solution Found - joints: [ 0.11807469  1.8403145  -0.78983814  0.5470129  -0.21924661 -0.04517846], max joint diff: 0.0604 rad (3.46°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 37, terminate: False
-  0%|                                                                                                  | 37/1000000 [00:14<44:58:20,  6.18it/s]EEF delta: pos=[0.00297474 0.00049496 0.00424253], rot=[-0.00042335  0.00650677 -0.00115456], gripper: 0.948 -> 0.935 (93.5mm)
-[a1x_robot] Action to be Solved - pos: [0.35586568 0.00191914 0.24985785], quat[x,y,z,w]: [-0.03032658  0.68839904 -0.00265798  0.72469303]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.072887 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.073125 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01903347  2.1397095  -1.9738644   1.3535426  -0.04661567 -0.02132383]
-Best IK solution: [ 0.01903347  2.1397095  -1.9738644   1.3535426  -0.04661567 -0.02132383]
-🌟 IK 求解耗时: 103.07 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01903347  2.1397095  -1.9738644   1.3535426  -0.04661567 -0.02132383], max joint diff: 0.0668 rad (3.83°)
-⏱️  ✓ 执行耗时=105ms, 误差=0.0mm
+last return: -1.0:   0%|                | 625/992999 [02:10<32:08:48,  8.58it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.04  0.04  0.04  0.  ], Scaled action: [-0.    0.01 -0.01 -0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0.04  0.04  0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [0.22620223 0.00613251 0.12693287], quat[x,y,z,w]: [-0.1396698   0.70888089 -0.02215813  0.69100596]
+I0213 19:25:57.535328 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.535584 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.13125753  1.8435725  -0.7806663   0.54472715 -0.2278561  -0.03202545]
+Best IK solution: [ 0.13125753  1.8435725  -0.7806663   0.54472715 -0.2278561  -0.03202545]
+🌟 IK 求解耗时: 46.90 ms
+[a1x_robot] IK Solution Found - joints: [ 0.13125753  1.8435725  -0.7806663   0.54472715 -0.2278561  -0.03202545], max joint diff: 0.0606 rad (3.47°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 38, terminate: False
-  0%|                                                                                                  | 38/1000000 [00:14<44:29:15,  6.24it/s]EEF delta: pos=[ 0.01092457 -0.01145892  0.01185957], rot=[-0.00604153  0.00060293  0.01095487], gripper: 0.947 -> 0.928 (92.8mm)
-[a1x_robot] Action to be Solved - pos: [ 0.36951448 -0.00938316  0.26364525], quat[x,y,z,w]: [-0.02750091  0.67627129  0.00284167  0.73613366]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.230175 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.230727 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.0164801   2.199895   -2.1641755   1.4490958  -0.03161149 -0.06079958]
-Best IK solution: [-0.0164801   2.199895   -2.1641755   1.4490958  -0.03161149 -0.06079958]
-🌟 IK 求解耗时: 127.01 ms
-[a1x_robot] IK Solution Found - joints: [-0.0164801   2.199895   -2.1641755   1.4490958  -0.03161149 -0.06079958], max joint diff: 0.2086 rad (11.95°)
-⏱️  ✓ 执行耗时=129ms, 误差=0.0mm
+last return: -1.0:   0%|                | 626/992999 [02:10<31:36:20,  8.72it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01  0.04  0.04  0.04  0.  ], Scaled action: [-0.    0.01 -0.01  0.04  0.04  0.04  0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[0.04 0.04 0.04], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [0.22480138 0.00836209 0.12542982], quat[x,y,z,w]: [-0.11680071  0.71114655  0.00362074  0.69326407]
+I0213 19:25:57.643931 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.644116 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.11080381  1.8381232  -0.77172005  0.5339937  -0.15953085 -0.05790669]
+Best IK solution: [ 0.11080381  1.8381232  -0.77172005  0.5339937  -0.15953085 -0.05790669]
+🌟 IK 求解耗时: 46.18 ms
+[a1x_robot] IK Solution Found - joints: [ 0.11080381  1.8381232  -0.77172005  0.5339937  -0.15953085 -0.05790669], max joint diff: 0.0428 rad (2.45°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 39, terminate: False
-  0%|                                                                                                  | 39/1000000 [00:14<46:07:33,  6.02it/s]EEF delta: pos=[ 0.0127509  -0.01319036  0.00627366], rot=[0.00519248 0.00913553 0.0069669 ], gripper: 0.947 -> 0.925 (92.5mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38323008 -0.01125714  0.25513596], quat[x,y,z,w]: [-0.02689775  0.66150113  0.00417591  0.74945002]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.409615 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.409814 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.02215718  2.217289   -2.147042    1.3747559  -0.02654832 -0.06787021]
-Best IK solution: [-0.02215718  2.217289   -2.147042    1.3747559  -0.02654832 -0.06787021]
-🌟 IK 求解耗时: 97.02 ms
-[a1x_robot] IK Solution Found - joints: [-0.02215718  2.217289   -2.147042    1.3747559  -0.02654832 -0.06787021], max joint diff: 0.1945 rad (11.14°)
+last return: -1.0:   0%|                | 627/992999 [02:11<31:07:36,  8.86it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.          0.00571429 -0.00571429  0.04       -0.         -0.
+  0.        ], Scaled action: [-0.          0.00571429 -0.00571429  0.04       -0.         -0.
+  0.        ]
+EEF delta: pos=[-0.          0.00571429 -0.00571429], rot=[ 0.04 -0.   -0.  ], gripper: 0.646 -> 0.646 (64.6mm)
+[a1x_robot] Action to be Solved - pos: [0.22319265 0.00623157 0.12769265], quat[x,y,z,w]: [-0.10984984  0.70217539 -0.00976639  0.70341122]
+I0213 19:25:57.753012 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.753231 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.10659821  1.815009   -0.75141424  0.5115131  -0.16932508 -0.03520976]
+Best IK solution: [ 0.10659821  1.815009   -0.75141424  0.5115131  -0.16932508 -0.03520976]
+🌟 IK 求解耗时: 45.71 ms
+[a1x_robot] IK Solution Found - joints: [ 0.10659821  1.815009   -0.75141424  0.5115131  -0.16932508 -0.03520976], max joint diff: 0.0398 rad (2.28°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 40, terminate: False
-  0%|                                                                                                  | 40/1000000 [00:14<44:55:45,  6.18it/s]EEF delta: pos=[ 0.00647559 -0.00465614  0.00648914], rot=[-0.0177833  -0.00085296  0.01612638], gripper: 0.939 -> 0.921 (92.1mm)
-[a1x_robot] Action to be Solved - pos: [ 0.36301196 -0.00294943  0.25517415], quat[x,y,z,w]: [-0.0420379   0.68658012 -0.00248925  0.72583356]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.561480 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.561884 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.00963477  2.1771493  -2.073525    1.4104267  -0.06192443 -0.04810846]
-Best IK solution: [ 0.00963477  2.1771493  -2.073525    1.4104267  -0.06192443 -0.04810846]
-🌟 IK 求解耗时: 92.64 ms
-[a1x_robot] IK Solution Found - joints: [ 0.00963477  2.1771493  -2.073525    1.4104267  -0.06192443 -0.04810846], max joint diff: 0.1080 rad (6.19°)
+last return: -1.0:   0%|                | 628/992999 [02:11<30:49:03,  8.94it/s]Raw action: [ 0.00804801  0.00305355  0.00313563  0.02400789 -0.03736814 -0.00365536
+ -0.10848074], Scaled action: [ 0.00804801  0.00305355  0.00313563  0.02400789 -0.03736814 -0.00365536
+ -0.10848074]
+EEF delta: pos=[0.00804801 0.00305355 0.00313563], rot=[ 0.02400789 -0.03736814 -0.00365536], gripper: 0.646 -> 0.538 (53.8mm)
+[a1x_robot] Action to be Solved - pos: [0.23208862 0.00562889 0.13454092], quat[x,y,z,w]: [-0.12055262  0.69071827 -0.0189713   0.71275201]
+I0213 19:25:57.861789 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.861975 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.11294907  1.8120761  -0.7878449   0.523111   -0.19874024 -0.03389326]
+Best IK solution: [ 0.11294907  1.8120761  -0.7878449   0.523111   -0.19874024 -0.03389326]
+🌟 IK 求解耗时: 46.52 ms
+[a1x_robot] IK Solution Found - joints: [ 0.11294907  1.8120761  -0.7878449   0.523111   -0.19874024 -0.03389326], max joint diff: 0.0196 rad (1.12°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 41, terminate: False
-  0%|                                                                                                  | 41/1000000 [00:14<44:02:50,  6.31it/s]EEF delta: pos=[0.00425952 0.00320901 0.00135048], rot=[0.00159157 0.01617116 0.0015603 ], gripper: 0.939 -> 0.943 (94.3mm)
-[a1x_robot] Action to be Solved - pos: [0.36614017 0.00057584 0.25913244], quat[x,y,z,w]: [-0.03064223  0.68622664  0.00622695  0.7267154 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.713481 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.713859 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01115059  2.2005405  -2.1421762   1.454618   -0.0336601  -0.04199603]
-Best IK solution: [ 0.01115059  2.2005405  -2.1421762   1.454618   -0.0336601  -0.04199603]
-🌟 IK 求解耗时: 99.62 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01115059  2.2005405  -2.1421762   1.454618   -0.0336601  -0.04199603], max joint diff: 0.0894 rad (5.12°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
+last return: -1.0:   0%|                | 629/992999 [02:11<30:33:20,  9.02it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.   -0.01  0.04 -0.   -0.    0.  ], Scaled action: [-0.    0.   -0.01  0.04 -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.   -0.01], rot=[ 0.04 -0.   -0.  ], gripper: 0.633 -> 0.633 (63.3mm)
+[a1x_robot] Action to be Solved - pos: [0.22511785 0.00547653 0.11926261], quat[x,y,z,w]: [-0.12121554  0.70497728 -0.00499072  0.69877673]
+I0213 19:25:57.970735 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:57.970921 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.10652866  1.8445085  -0.7381407   0.47762102 -0.17845845 -0.05750953]
+Best IK solution: [ 0.10652866  1.8445085  -0.7381407   0.47762102 -0.17845845 -0.05750953]
+🌟 IK 求解耗时: 49.62 ms
+[a1x_robot] IK Solution Found - joints: [ 0.10652866  1.8445085  -0.7381407   0.47762102 -0.17845845 -0.05750953], max joint diff: 0.0607 rad (3.48°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 42, terminate: False
-  0%|                                                                                                  | 42/1000000 [00:15<43:38:02,  6.37it/s]EEF delta: pos=[ 0.00635937 -0.00200202 -0.00112864], rot=[0.00066439 0.00656745 0.00241534], gripper: 0.937 -> 0.927 (92.7mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38521703 -0.01147984  0.25945485], quat[x,y,z,w]: [-0.02908258  0.6601725   0.005827    0.75052816]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:53.866486 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:53.867070 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.02256384  2.2346108  -2.2058933   1.4127561  -0.02674659 -0.0737844 ]
-Best IK solution: [-0.02256384  2.2346108  -2.2058933   1.4127561  -0.02674659 -0.0737844 ]
-🌟 IK 求解耗时: 98.67 ms
-[a1x_robot] IK Solution Found - joints: [-0.02256384  2.2346108  -2.2058933   1.4127561  -0.02674659 -0.0737844 ], max joint diff: 0.0787 rad (4.51°)
+last return: -1.0:   0%|                | 630/992999 [02:11<32:10:53,  8.57it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.01        0.01       -0.01       -0.         -0.         -0.01428571
+  0.        ], Scaled action: [-0.01        0.01       -0.01       -0.         -0.         -0.01428571
+  0.        ]
+EEF delta: pos=[-0.01  0.01 -0.01], rot=[-0.         -0.         -0.01428571], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.21569969 0.01777861 0.11739291], quat[x,y,z,w]: [-0.12202878  0.70506553 -0.01679042  0.69836212]
+I0213 19:25:58.102928 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.103123 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.17545938  1.8332523  -0.70512766  0.47224826 -0.19465885  0.02865397]
+Best IK solution: [ 0.17545938  1.8332523  -0.70512766  0.47224826 -0.19465885  0.02865397]
+🌟 IK 求解耗时: 48.38 ms
+[a1x_robot] IK Solution Found - joints: [ 0.17545938  1.8332523  -0.70512766  0.47224826 -0.19465885  0.02865397], max joint diff: 0.0665 rad (3.81°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 43, terminate: False
-  0%|                                                                                                  | 43/1000000 [00:15<43:13:33,  6.43it/s]EEF delta: pos=[0.00658785 0.00056368 0.00364781], rot=[-0.00853034 -0.00683647  0.00453307], gripper: 0.933 -> 0.921 (92.1mm)
-[a1x_robot] Action to be Solved - pos: [ 0.37460942 -0.00523644  0.25706317], quat[x,y,z,w]: [-0.03925209  0.68136168 -0.00254987  0.7308892 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.016877 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.017178 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 1.9696497e-03  2.2300074e+00 -2.1882775e+00  1.4575177e+00
- -5.7391245e-02 -5.2047294e-02]
-Best IK solution: [ 1.9696497e-03  2.2300074e+00 -2.1882775e+00  1.4575177e+00
- -5.7391245e-02 -5.2047294e-02]
-🌟 IK 求解耗时: 103.50 ms
-[a1x_robot] IK Solution Found - joints: [ 1.9696497e-03  2.2300074e+00 -2.1882775e+00  1.4575177e+00
- -5.7391245e-02 -5.2047294e-02], max joint diff: 0.0932 rad (5.34°)
-⏱️  ✓ 执行耗时=105ms, 误差=0.0mm
+last return: -1.0:   0%|                | 631/992999 [02:11<31:40:53,  8.70it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.          0.01       -0.01       -0.         -0.          0.01142857
+  0.        ], Scaled action: [-0.          0.01       -0.01       -0.         -0.          0.01142857
+  0.        ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0.         -0.          0.01142857], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.2250524  0.01837884 0.11665955], quat[x,y,z,w]: [-0.12080191  0.70357516 -0.00314161  0.70027068]
+I0213 19:25:58.211800 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.211999 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.161697    1.8550953  -0.7371956   0.4714492  -0.17459378 -0.00391585]
+Best IK solution: [ 0.161697    1.8550953  -0.7371956   0.4714492  -0.17459378 -0.00391585]
+🌟 IK 求解耗时: 46.75 ms
+[a1x_robot] IK Solution Found - joints: [ 0.161697    1.8550953  -0.7371956   0.4714492  -0.17459378 -0.00391585], max joint diff: 0.0471 rad (2.70°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 44, terminate: False
-  0%|                                                                                                  | 44/1000000 [00:15<43:10:03,  6.43it/s]EEF delta: pos=[ 0.0031678  -0.00406631 -0.00047959], rot=[-0.01132658  0.01058481 -0.00038949], gripper: 0.933 -> 0.931 (93.1mm)
-[a1x_robot] Action to be Solved - pos: [ 0.36918732 -0.0054206   0.2569917 ], quat[x,y,z,w]: [-0.03341986  0.69030964  0.00136076  0.72274052]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.172954 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.173259 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.00224469  2.2251635  -2.1799376   1.4784651  -0.04408488 -0.05249195]
-Best IK solution: [-0.00224469  2.2251635  -2.1799376   1.4784651  -0.04408488 -0.05249195]
-🌟 IK 求解耗时: 102.51 ms
-[a1x_robot] IK Solution Found - joints: [-0.00224469  2.2251635  -2.1799376   1.4784651  -0.04408488 -0.05249195], max joint diff: 0.0540 rad (3.09°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 632/992999 [02:11<31:09:29,  8.85it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22565882 0.0184215  0.11681153], quat[x,y,z,w]: [-0.11450624  0.70264662 -0.00550947  0.70224333]
+I0213 19:25:58.322047 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.322235 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.1590469   1.854274   -0.7376808   0.46877214 -0.1693052   0.00541876]
+Best IK solution: [ 0.1590469   1.854274   -0.7376808   0.46877214 -0.1693052   0.00541876]
+🌟 IK 求解耗时: 49.73 ms
+[a1x_robot] IK Solution Found - joints: [ 0.1590469   1.854274   -0.7376808   0.46877214 -0.1693052   0.00541876], max joint diff: 0.0448 rad (2.57°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 45, terminate: False
-  0%|                                                                                                  | 45/1000000 [00:15<43:08:06,  6.44it/s]EEF delta: pos=[ 8.30498338e-03 -2.25330330e-03  4.59023286e-05], rot=[ 0.00032122 -0.00753024  0.00570825], gripper: 0.933 -> 0.925 (92.5mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38995696 -0.01044264  0.2623294 ], quat[x,y,z,w]: [-0.03265307  0.65609202  0.01041489  0.75390223]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.329226 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.329505 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.02028047  2.2597935  -2.2730095   1.444124   -0.02432301 -0.08305866]
-Best IK solution: [-0.02028047  2.2597935  -2.2730095   1.444124   -0.02432301 -0.08305866]
-🌟 IK 求解耗时: 99.46 ms
-[a1x_robot] IK Solution Found - joints: [-0.02028047  2.2597935  -2.2730095   1.444124   -0.02432301 -0.08305866], max joint diff: 0.0890 rad (5.10°)
-⏱️  ✓ 执行耗时=101ms, 误差=0.0mm
+last return: -1.0:   0%|                | 633/992999 [02:11<30:56:34,  8.91it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22564741 0.01773106 0.11565298], quat[x,y,z,w]: [-0.11586169  0.70147856 -0.00646873  0.70317996]
+I0213 19:25:58.430864 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.431073 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.15763465  1.8553913  -0.7310113   0.4579635  -0.17284723  0.00319339]
+Best IK solution: [ 0.15763465  1.8553913  -0.7310113   0.4579635  -0.17284723  0.00319339]
+🌟 IK 求解耗时: 50.88 ms
+[a1x_robot] IK Solution Found - joints: [ 0.15763465  1.8553913  -0.7310113   0.4579635  -0.17284723  0.00319339], max joint diff: 0.0448 rad (2.57°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 46, terminate: False
-  0%|                                                                                                  | 46/1000000 [00:15<42:58:55,  6.46it/s]EEF delta: pos=[ 0.00950743  0.00357001 -0.00086111], rot=[-0.008413   -0.00391655  0.00601269], gripper: 0.933 -> 0.926 (92.6mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38466533 -0.00375101  0.25848962], quat[x,y,z,w]: [-0.04059091  0.6755105  -0.00361553  0.73622339]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.482096 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.482478 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.00669954  2.2800276  -2.2990327   1.5025918  -0.06078656 -0.04832548]
-Best IK solution: [ 0.00669954  2.2800276  -2.2990327   1.5025918  -0.06078656 -0.04832548]
-🌟 IK 求解耗时: 129.91 ms
-[a1x_robot] IK Solution Found - joints: [ 0.00669954  2.2800276  -2.2990327   1.5025918  -0.06078656 -0.04832548], max joint diff: 0.1082 rad (6.20°)
-⏱️  ✓ 执行耗时=132ms, 误差=0.0mm
+last return: -1.0:   0%|                | 634/992999 [02:11<30:41:46,  8.98it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22571837 0.02012076 0.1138673 ], quat[x,y,z,w]: [-0.11532781  0.69965802 -0.00806644  0.70506247]
+I0213 19:25:58.540431 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.540636 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.16887254  1.8590375  -0.72414106  0.44454202 -0.1746903   0.0172041 ]
+Best IK solution: [ 0.16887254  1.8590375  -0.72414106  0.44454202 -0.1746903   0.0172041 ]
+🌟 IK 求解耗时: 50.91 ms
+[a1x_robot] IK Solution Found - joints: [ 0.16887254  1.8590375  -0.72414106  0.44454202 -0.1746903   0.0172041 ], max joint diff: 0.0446 rad (2.56°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 47, terminate: False
-  0%|                                                                                                  | 47/1000000 [00:15<45:23:29,  6.12it/s]EEF delta: pos=[ 0.00571937 -0.00035304  0.0025371 ], rot=[-0.00438812 -0.0022728  -0.00074604], gripper: 0.933 -> 0.919 (91.9mm)
-[a1x_robot] Action to be Solved - pos: [ 0.3771118  -0.00663351  0.25974265], quat[x,y,z,w]: [-0.03410753  0.68534412 -0.00106357  0.7274194 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.666555 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.666846 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.00431673  2.2664728  -2.2800326   1.5234342  -0.04806238 -0.05255009]
-Best IK solution: [-0.00431673  2.2664728  -2.2800326   1.5234342  -0.04806238 -0.05255009]
-🌟 IK 求解耗时: 100.52 ms
-[a1x_robot] IK Solution Found - joints: [-0.00431673  2.2664728  -2.2800326   1.5234342  -0.04806238 -0.05255009], max joint diff: 0.0979 rad (5.61°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
+last return: -1.0:   0%|                | 635/992999 [02:11<30:32:15,  9.03it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01 -0.   -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[-0. -0. -0.], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22640986 0.02462813 0.11174818], quat[x,y,z,w]: [-0.11318106  0.6977147  -0.00860773  0.70732605]
+I0213 19:25:58.649916 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.650107 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18709733  1.865978   -0.720583    0.43135473 -0.17287764  0.03903089]
+Best IK solution: [ 0.18709733  1.865978   -0.720583    0.43135473 -0.17287764  0.03903089]
+🌟 IK 求解耗时: 47.27 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18709733  1.865978   -0.720583    0.43135473 -0.17287764  0.03903089], max joint diff: 0.0444 rad (2.54°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 48, terminate: False
-  0%|                                                                                                  | 48/1000000 [00:15<44:37:28,  6.22it/s]EEF delta: pos=[0.0073169  0.00116639 0.00226699], rot=[ 9.27642337e-04  9.48230736e-05 -3.35895061e-03], gripper: 0.933 -> 0.935 (93.5mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38864873 -0.00642194  0.2651665 ], quat[x,y,z,w]: [-0.03320558  0.66728481  0.00150751  0.74406055]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.818380 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.818737 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [-0.00540236  2.3036447  -2.3873894   1.5445408  -0.04149215 -0.05686491]
-Best IK solution: [-0.00540236  2.3036447  -2.3873894   1.5445408  -0.04149215 -0.05686491]
-🌟 IK 求解耗时: 116.03 ms
-[a1x_robot] IK Solution Found - joints: [-0.00540236  2.3036447  -2.3873894   1.5445408  -0.04149215 -0.05686491], max joint diff: 0.1461 rad (8.37°)
-⏱️  ✓ 执行耗时=118ms, 误差=0.0mm
+last return: -1.0:   0%|                | 636/992999 [02:12<30:24:28,  9.07it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01  0.02 -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01  0.02 -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[ 0.02 -0.   -0.  ], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22726918 0.02708837 0.10968412], quat[x,y,z,w]: [-0.10533917  0.69617496 -0.00152479  0.71009982]
+I0213 19:25:58.758844 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.759033 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18782946  1.8696444  -0.714289    0.4130642  -0.15253948  0.04026256]
+Best IK solution: [ 0.18782946  1.8696444  -0.714289    0.4130642  -0.15253948  0.04026256]
+🌟 IK 求解耗时: 48.26 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18782946  1.8696444  -0.714289    0.4130642  -0.15253948  0.04026256], max joint diff: 0.0491 rad (2.81°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 49, terminate: False
-  0%|                                                                                                  | 49/1000000 [00:16<45:13:36,  6.14it/s]EEF delta: pos=[0.00635701 0.004479   0.00128539], rot=[-0.00056051  0.00018862 -0.00579713], gripper: 0.933 -> 0.926 (92.6mm)
-[a1x_robot] Action to be Solved - pos: [0.38815491 0.00093507 0.2634689 ], quat[x,y,z,w]: [-0.03681622  0.67361365 -0.00409106  0.73815478]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:54.987560 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:54.987874 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01772523  2.318635   -2.410916    1.5708     -0.05736198 -0.03134061]
-Best IK solution: [ 0.01772523  2.318635   -2.410916    1.5708     -0.05736198 -0.03134061]
-🌟 IK 求解耗时: 107.98 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01772523  2.318635   -2.410916    1.5708     -0.05736198 -0.03134061], max joint diff: 0.1247 rad (7.15°)
-⏱️  ✓ 执行耗时=110ms, 误差=0.0mm
+last return: -1.0:   0%|                | 637/992999 [02:12<30:20:30,  9.09it/s][SpaceMouse] Intervention detected: using expert action, 0.0
+Raw action: [-0.    0.01 -0.01  0.04 -0.   -0.    0.  ], Scaled action: [-0.    0.01 -0.01  0.04 -0.   -0.    0.  ]
+EEF delta: pos=[-0.    0.01 -0.01], rot=[ 0.04 -0.   -0.  ], gripper: 0.608 -> 0.608 (60.8mm)
+[a1x_robot] Action to be Solved - pos: [0.22809897 0.02879897 0.10744597], quat[x,y,z,w]: [-0.09740893  0.69411393  0.00440454  0.71323065]
+I0213 19:25:58.868212 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.868404 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18608356  1.8730055  -0.7055893   0.39138156 -0.13384417  0.04084446]
+Best IK solution: [ 0.18608356  1.8730055  -0.7055893   0.39138156 -0.13384417  0.04084446]
+🌟 IK 求解耗时: 50.25 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18608356  1.8730055  -0.7055893   0.39138156 -0.13384417  0.04084446], max joint diff: 0.0539 rad (3.09°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 50, terminate: False
-  0%|                                                                                                  | 50/1000000 [00:16<45:04:56,  6.16it/s]EEF delta: pos=[0.00637412 0.00286707 0.00095027], rot=[-0.00687174 -0.00617139  0.00398918], gripper: 0.933 -> 0.921 (92.1mm)
-[a1x_robot] Action to be Solved - pos: [ 0.3852468  -0.00363509  0.26130885], quat[x,y,z,w]: [-0.0379052   0.678926   -0.00261214  0.73322292]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.149903 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.150301 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.00563153  2.3090901  -2.3793056   1.5630075  -0.05576653 -0.04651663]
-Best IK solution: [ 0.00563153  2.3090901  -2.3793056   1.5630075  -0.05576653 -0.04651663]
-🌟 IK 求解耗时: 98.53 ms
-[a1x_robot] IK Solution Found - joints: [ 0.00563153  2.3090901  -2.3793056   1.5630075  -0.05576653 -0.04651663], max joint diff: 0.0976 rad (5.59°)
+last return: -1.0:   0%|                | 638/992999 [02:12<30:14:37,  9.11it/s]Raw action: [ 0.01        0.00330767 -0.00529616  0.02175616 -0.01725901  0.01222276
+ -0.07631578], Scaled action: [ 0.01        0.00330767 -0.00529616  0.02175616 -0.01725901  0.01222276
+ -0.07631578]
+EEF delta: pos=[ 0.01        0.00330767 -0.00529616], rot=[ 0.02175616 -0.01725901  0.01222276], gripper: 0.608 -> 0.532 (53.2mm)
+[a1x_robot] Action to be Solved - pos: [0.23813396 0.02501397 0.11018435], quat[x,y,z,w]: [-1.06141766e-01  6.86580711e-01  2.18653134e-04  7.19264072e-01]
+I0213 19:25:58.977043 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:58.977221 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.17128372  1.8826869  -0.73850244  0.3946469  -0.15366162  0.01779857]
+Best IK solution: [ 0.17128372  1.8826869  -0.73850244  0.3946469  -0.15366162  0.01779857]
+🌟 IK 求解耗时: 50.44 ms
+[a1x_robot] IK Solution Found - joints: [ 0.17128372  1.8826869  -0.73850244  0.3946469  -0.15366162  0.01779857], max joint diff: 0.0402 rad (2.31°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 51, terminate: False
-  0%|                                                                                                  | 51/1000000 [00:16<44:16:12,  6.27it/s]EEF delta: pos=[0.00691492 0.00484361 0.00517316], rot=[-0.00746929 -0.00965799 -0.00144067], gripper: 0.933 -> 0.918 (91.8mm)
-[a1x_robot] Action to be Solved - pos: [ 0.38878641 -0.00167004  0.27024769], quat[x,y,z,w]: [-0.03410175  0.67145099 -0.0071649   0.74022923]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.300302 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.300606 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01159384  2.3062637  -2.4114842   1.5708     -0.05779869 -0.02963334]
-Best IK solution: [ 0.01159384  2.3062637  -2.4114842   1.5708     -0.05779869 -0.02963334]
-🌟 IK 求解耗时: 101.59 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01159384  2.3062637  -2.4114842   1.5708     -0.05779869 -0.02963334], max joint diff: 0.0725 rad (4.16°)
-⏱️  ✓ 执行耗时=103ms, 误差=0.0mm
+last return: -1.0:   0%|                | 639/992999 [02:12<30:09:50,  9.14it/s]Raw action: [ 0.00850416  0.00476706 -0.00019699  0.01836629 -0.02736071  0.0049532
+ -0.06609821], Scaled action: [ 0.00850416  0.00476706 -0.00019699  0.01836629 -0.02736071  0.0049532
+ -0.06609821]
+EEF delta: pos=[ 0.00850416  0.00476706 -0.00019699], rot=[ 0.01836629 -0.02736071  0.0049532 ], gripper: 0.600 -> 0.533 (53.3mm)
+[a1x_robot] Action to be Solved - pos: [0.23639596 0.02879757 0.11337666], quat[x,y,z,w]: [-0.10490009  0.68359183 -0.00238258  0.72228284]
+I0213 19:25:59.085803 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.085989 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18974921  1.8690002  -0.7380059   0.4028215  -0.15719831  0.04125205]
+Best IK solution: [ 0.18974921  1.8690002  -0.7380059   0.4028215  -0.15719831  0.04125205]
+🌟 IK 求解耗时: 51.19 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18974921  1.8690002  -0.7380059   0.4028215  -0.15719831  0.04125205], max joint diff: 0.0242 rad (1.39°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 52, terminate: False
-  0%|                                                                                                  | 52/1000000 [00:16<43:50:26,  6.34it/s]EEF delta: pos=[0.00669171 0.00875202 0.00604752], rot=[-0.01047112 -0.02207482  0.01075658], gripper: 0.933 -> 0.936 (93.6mm)
-[a1x_robot] Action to be Solved - pos: [0.39352923 0.00965932 0.27291897], quat[x,y,z,w]: [-0.04339852  0.6602206  -0.00346243  0.74980887]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.455898 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.456243 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04188979  2.3189936  -2.4513228   1.5708     -0.06797923 -0.01889022]
-Best IK solution: [ 0.04188979  2.3189936  -2.4513228   1.5708     -0.06797923 -0.01889022]
-🌟 IK 求解耗时: 101.18 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04188979  2.3189936  -2.4513228   1.5708     -0.06797923 -0.01889022], max joint diff: 0.0541 rad (3.10°)
-⏱️  ✓ 执行耗时=103ms, 误差=0.0mm
+last return: -1.0:   0%|                | 640/992999 [02:12<37:43:41,  7.31it/s]Raw action: [ 0.01        0.00129084  0.00046984  0.01318542 -0.038171    0.00173826
+ -0.07195544], Scaled action: [ 0.01        0.00129084  0.00046984  0.01318542 -0.038171    0.00173826
+ -0.07195544]
+EEF delta: pos=[0.01       0.00129084 0.00046984], rot=[ 0.01318542 -0.038171    0.00173826], gripper: 0.578 -> 0.506 (50.6mm)
+[a1x_robot] Action to be Solved - pos: [0.24027534 0.02957782 0.11103835], quat[x,y,z,w]: [-0.09638754  0.67571979  0.00567317  0.73080779]
+I0213 19:25:59.287790 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.288034 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.1808466   1.8721801  -0.72719383  0.36179516 -0.13599692  0.03161119]
+Best IK solution: [ 0.1808466   1.8721801  -0.72719383  0.36179516 -0.13599692  0.03161119]
+🌟 IK 求解耗时: 49.33 ms
+[a1x_robot] IK Solution Found - joints: [ 0.1808466   1.8721801  -0.72719383  0.36179516 -0.13599692  0.03161119], max joint diff: 0.0350 rad (2.01°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 53, terminate: False
-  0%|                                                                                                  | 53/1000000 [00:16<43:35:47,  6.37it/s]EEF delta: pos=[0.00677446 0.00213785 0.00072968], rot=[-0.00532686 -0.01038128 -0.00750855], gripper: 0.931 -> 0.924 (92.4mm)
-[a1x_robot] Action to be Solved - pos: [ 0.39376272 -0.00083439  0.26487378], quat[x,y,z,w]: [-0.03485497  0.66862167 -0.01059411  0.74270987]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.610417 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.610735 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01422726  2.3324525  -2.4416351   1.5708     -0.06397234 -0.02338829]
-Best IK solution: [ 0.01422726  2.3324525  -2.4416351   1.5708     -0.06397234 -0.02338829]
-🌟 IK 求解耗时: 106.96 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01422726  2.3324525  -2.4416351   1.5708     -0.06397234 -0.02338829], max joint diff: 0.0504 rad (2.89°)
-⏱️  ✓ 执行耗时=109ms, 误差=0.0mm
+last return: -1.0:   0%|                | 641/992999 [02:12<35:26:35,  7.78it/s]Raw action: [ 0.00720268 -0.00026953  0.00258177  0.00747526 -0.02020862  0.00276121
+ -0.08858001], Scaled action: [ 0.00720268 -0.00026953  0.00258177  0.00747526 -0.02020862  0.00276121
+ -0.08858001]
+EEF delta: pos=[ 0.00720268 -0.00026953  0.00258177], rot=[ 0.00747526 -0.02020862  0.00276121], gripper: 0.561 -> 0.472 (47.2mm)
+[a1x_robot] Action to be Solved - pos: [0.23888044 0.02797141 0.112481  ], quat[x,y,z,w]: [-0.09782426  0.68119564  0.00717838  0.72550078]
+I0213 19:25:59.396427 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.396672 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.17439944  1.8709835  -0.7366559   0.3865637  -0.13385637  0.02204411]
+Best IK solution: [ 0.17439944  1.8709835  -0.7366559   0.3865637  -0.13385637  0.02204411]
+🌟 IK 求解耗时: 46.44 ms
+[a1x_robot] IK Solution Found - joints: [ 0.17439944  1.8709835  -0.7366559   0.3865637  -0.13385637  0.02204411], max joint diff: 0.0209 rad (1.20°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 54, terminate: False
-  0%|                                                                                                  | 54/1000000 [00:16<43:53:15,  6.33it/s]EEF delta: pos=[ 0.00476191 -0.00018286  0.00147875], rot=[-0.00550958 -0.01285305 -0.01112288], gripper: 0.930 -> 0.911 (91.1mm)
-[a1x_robot] Action to be Solved - pos: [ 0.39292956 -0.00234826  0.26867901], quat[x,y,z,w]: [-0.0313808   0.66218783 -0.01484451  0.74853334]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.769500 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.769833 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.01120413  2.3248353  -2.4491572   1.5708     -0.06513959 -0.01622184]
-Best IK solution: [ 0.01120413  2.3248353  -2.4491572   1.5708     -0.06513959 -0.01622184]
-🌟 IK 求解耗时: 106.24 ms
-[a1x_robot] IK Solution Found - joints: [ 0.01120413  2.3248353  -2.4491572   1.5708     -0.06513959 -0.01622184], max joint diff: 0.0413 rad (2.37°)
-⏱️  ✓ 执行耗时=108ms, 误差=0.0mm
+last return: -1.0:   0%|                | 642/992999 [02:12<33:49:21,  8.15it/s]Raw action: [ 0.00673936 -0.00129402  0.00186631  0.00667567 -0.01022541  0.00778757
+ -0.06400689], Scaled action: [ 0.00673936 -0.00129402  0.00186631  0.00667567 -0.01022541  0.00778757
+ -0.06400689]
+EEF delta: pos=[ 0.00673936 -0.00129402  0.00186631], rot=[ 0.00667567 -0.01022541  0.00778757], gripper: 0.533 -> 0.469 (46.9mm)
+[a1x_robot] Action to be Solved - pos: [0.24071161 0.02637013 0.11310959], quat[x,y,z,w]: [-0.10242775  0.68229188  0.00419079  0.72385688]
+I0213 19:25:59.506376 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.506570 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.17086592  1.8761882  -0.7487641   0.39769995 -0.1439738   0.01622585]
+Best IK solution: [ 0.17086592  1.8761882  -0.7487641   0.39769995 -0.1439738   0.01622585]
+🌟 IK 求解耗时: 51.68 ms
+[a1x_robot] IK Solution Found - joints: [ 0.17086592  1.8761882  -0.7487641   0.39769995 -0.1439738   0.01622585], max joint diff: 0.0234 rad (1.34°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 55, terminate: False
-  0%|                                                                                                  | 55/1000000 [00:17<43:55:48,  6.32it/s]EEF delta: pos=[ 0.00456166  0.00092892 -0.00052709], rot=[-0.00404874 -0.00658503  0.01000993], gripper: 0.930 -> 0.921 (92.1mm)
-[a1x_robot] Action to be Solved - pos: [0.39652565 0.0065891  0.2689686 ], quat[x,y,z,w]: [-0.04404612  0.65563626 -0.00270312  0.75378626]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:55.929255 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:55.929576 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03406273  2.3366954  -2.476737    1.5708     -0.06650854 -0.02924664]
-Best IK solution: [ 0.03406273  2.3366954  -2.476737    1.5708     -0.06650854 -0.02924664]
-🌟 IK 求解耗时: 111.14 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03406273  2.3366954  -2.476737    1.5708     -0.06650854 -0.02924664], max joint diff: 0.0387 rad (2.21°)
-⏱️  ✓ 执行耗时=113ms, 误差=0.0mm
+last return: -1.0:   0%|                | 643/992999 [02:12<32:43:34,  8.42it/s]Raw action: [ 0.00712534  0.00364301  0.00439642  0.00842945 -0.02720885  0.01047965
+ -0.06543357], Scaled action: [ 0.00712534  0.00364301  0.00439642  0.00842945 -0.02720885  0.01047965
+ -0.06543357]
+EEF delta: pos=[0.00712534 0.00364301 0.00439642], rot=[ 0.00842945 -0.02720885  0.01047965], gripper: 0.516 -> 0.450 (45.0mm)
+[a1x_robot] Action to be Solved - pos: [0.2429414  0.03191317 0.11692534], quat[x,y,z,w]: [-0.10442749  0.6738495   0.00343791  0.73144373]
+I0213 19:25:59.614897 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.615086 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.19480509  1.8661513  -0.75688356  0.39691007 -0.15148892  0.03669063]
+Best IK solution: [ 0.19480509  1.8661513  -0.75688356  0.39691007 -0.15148892  0.03669063]
+🌟 IK 求解耗时: 56.77 ms
+[a1x_robot] IK Solution Found - joints: [ 0.19480509  1.8661513  -0.75688356  0.39691007 -0.15148892  0.03669063], max joint diff: 0.0233 rad (1.33°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 56, terminate: False
-  0%|                                                                                                  | 56/1000000 [00:17<44:24:39,  6.25it/s]EEF delta: pos=[0.00652693 0.00291034 0.00585689], rot=[-0.00503732 -0.0008041  -0.00174292], gripper: 0.930 -> 0.930 (93.0mm)
-[a1x_robot] Action to be Solved - pos: [0.3998642  0.00196932 0.27279073], quat[x,y,z,w]: [-0.03467186  0.6602911  -0.01520615  0.75005487]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.094966 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.095302 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [[ 0.01489362  2.3251064  -2.442766    1.5619149  -0.06531915 -0.01829787]]
-⚠️ IK solve failed: local variable 'best' referenced before assignment
-⏱️  命令→状态读取 = 102.0ms
+last return: -1.0:   0%|                | 644/992999 [02:12<31:57:59,  8.62it/s]Raw action: [ 0.00663713  0.00466191  0.00467077  0.01005475 -0.02893408  0.01138823
+ -0.05801458], Scaled action: [ 0.00663713  0.00466191  0.00467077  0.01005475 -0.02893408  0.01138823
+ -0.05801458]
+EEF delta: pos=[0.00663713 0.00466191 0.00467077], rot=[ 0.01005475 -0.02893408  0.01138823], gripper: 0.497 -> 0.439 (43.9mm)
+[a1x_robot] Action to be Solved - pos: [0.24395439 0.03367365 0.11737535], quat[x,y,z,w]: [-0.10201272  0.67115444  0.00937853  0.73420513]
+I0213 19:25:59.725506 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.725749 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.19646542  1.8639513  -0.75678736  0.3898516  -0.14057139  0.0330758 ]
+Best IK solution: [ 0.19646542  1.8639513  -0.75678736  0.3898516  -0.14057139  0.0330758 ]
+🌟 IK 求解耗时: 51.05 ms
+[a1x_robot] IK Solution Found - joints: [ 0.19646542  1.8639513  -0.75678736  0.3898516  -0.14057139  0.0330758 ], max joint diff: 0.0213 rad (1.22°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 57, terminate: False
-  0%|                                                                                                  | 57/1000000 [00:17<44:00:13,  6.31it/s]EEF delta: pos=[0.01119651 0.00637126 0.0039478 ], rot=[-0.00299684 -0.00887968  0.00508469], gripper: 0.925 -> 0.915 (91.5mm)
-[a1x_robot] Action to be Solved - pos: [0.40502694 0.00195803 0.27171736], quat[x,y,z,w]: [-0.03248458  0.65542872 -0.0162771   0.75438253]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.249564 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.250258 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [[ 0.00617021  2.325532   -2.448085    1.5619149  -0.06574468 -0.01617021]]
-⚠️ IK solve failed: local variable 'best' referenced before assignment
-⏱️  命令→状态读取 = 106.6ms
+last return: -1.0:   0%|                | 645/992999 [02:13<31:28:48,  8.76it/s][SpaceMouse] Intervention detected: using expert action, -0.16268604937681302
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16268605], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16268605]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.475 -> 0.313 (31.3mm)
+[a1x_robot] Action to be Solved - pos: [0.23855778 0.02914308 0.11283919], quat[x,y,z,w]: [-0.09884987  0.68148846  0.00769963  0.7250813 ]
+I0213 19:25:59.834280 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.834475 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.179784    1.870425   -0.7382899   0.39041793 -0.13467148  0.02531513]
+Best IK solution: [ 0.179784    1.870425   -0.7382899   0.39041793 -0.13467148  0.02531513]
+🌟 IK 求解耗时: 51.63 ms
+[a1x_robot] IK Solution Found - joints: [ 0.179784    1.870425   -0.7382899   0.39041793 -0.13467148  0.02531513], max joint diff: 0.0008 rad (0.05°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 58, terminate: False
-  0%|                                                                                                  | 58/1000000 [00:17<44:02:27,  6.31it/s]EEF delta: pos=[0.00377733 0.00586935 0.00157208], rot=[-6.89950911e-03 -9.36732395e-05  5.33239963e-03], gripper: 0.925 -> 0.926 (92.6mm)
-[a1x_robot] Action to be Solved - pos: [0.40027425 0.01168527 0.27102828], quat[x,y,z,w]: [-0.04642955  0.65230104 -0.00371012  0.75652752]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.407836 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.408341 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.0481922   2.3437707  -2.4956195   1.5708     -0.07304375 -0.01894666]
-Best IK solution: [ 0.0481922   2.3437707  -2.4956195   1.5708     -0.07304375 -0.01894666]
-🌟 IK 求解耗时: 115.44 ms
-[a1x_robot] IK Solution Found - joints: [ 0.0481922   2.3437707  -2.4956195   1.5708     -0.07304375 -0.01894666], max joint diff: 0.0267 rad (1.53°)
-⏱️  ✓ 执行耗时=118ms, 误差=0.0mm
+last return: -1.0:   0%|                | 646/992999 [02:13<31:04:52,  8.87it/s][SpaceMouse] Intervention detected: using expert action, -0.166172459023231
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16617246], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16617246]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.449 -> 0.282 (28.2mm)
+[a1x_robot] Action to be Solved - pos: [0.24028707 0.02875699 0.11375271], quat[x,y,z,w]: [-0.09888362  0.67954978  0.00584876  0.72691122]
+I0213 19:25:59.944763 137493517162304 logger.py:71] Updating safety params
+I0213 19:25:59.944944 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.17829788  1.8704256  -0.7440425   0.39106384 -0.13787234  0.02595745]
+Best IK solution: [ 0.17829788  1.8704256  -0.7440425   0.39106384 -0.13787234  0.02595745]
+🌟 IK 求解耗时: 46.73 ms
+[a1x_robot] IK Solution Found - joints: [ 0.17829788  1.8704256  -0.7440425   0.39106384 -0.13787234  0.02595745], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 59, terminate: False
-  0%|                                                                                                  | 59/1000000 [00:17<44:59:27,  6.17it/s]EEF delta: pos=[0.00218038 0.00668029 0.00585123], rot=[-0.00471345  0.00157997  0.00765547], gripper: 0.925 -> 0.934 (93.4mm)
-[a1x_robot] Action to be Solved - pos: [0.39950038 0.01408124 0.27519328], quat[x,y,z,w]: [-0.04829485  0.65189457 -0.00083564  0.7567697 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.578899 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.579097 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.053652    2.3341331  -2.4899204   1.5708     -0.07302006 -0.01844678]
-Best IK solution: [ 0.053652    2.3341331  -2.4899204   1.5708     -0.07302006 -0.01844678]
-🌟 IK 求解耗时: 97.64 ms
-[a1x_robot] IK Solution Found - joints: [ 0.053652    2.3341331  -2.4899204   1.5708     -0.07302006 -0.01844678], max joint diff: 0.0177 rad (1.01°)
+last return: -1.0:   0%|                | 647/992999 [02:13<30:53:33,  8.92it/s][SpaceMouse] Intervention detected: using expert action, -0.1647004507610254
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16470045], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16470045]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.391 -> 0.227 (22.7mm)
+[a1x_robot] Action to be Solved - pos: [0.24228219 0.03117725 0.1151584 ], quat[x,y,z,w]: [-0.10083845  0.67554809  0.00678835  0.73035628]
+I0213 19:26:00.054636 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.054830 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18787234  1.868936   -0.7504255   0.38957447 -0.14085107  0.0306383 ]
+Best IK solution: [ 0.18787234  1.868936   -0.7504255   0.38957447 -0.14085107  0.0306383 ]
+🌟 IK 求解耗时: 46.00 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18787234  1.868936   -0.7504255   0.38957447 -0.14085107  0.0306383 ], max joint diff: 0.0000 rad (0.00°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 60, terminate: False
-  0%|                                                                                                  | 60/1000000 [00:17<44:17:13,  6.27it/s]EEF delta: pos=[-0.00204183 -0.00379928  0.0025893 ], rot=[-0.00823706 -0.00796513  0.00315823], gripper: 0.925 -> 0.908 (90.8mm)
-[a1x_robot] Action to be Solved - pos: [0.39539151 0.00087245 0.27188488], quat[x,y,z,w]: [-0.04632053  0.64849467 -0.00679855  0.75977816]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.729793 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.730162 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.02165813  2.311541   -2.4370835   1.5379937  -0.07389566 -0.04032217]
-Best IK solution: [ 0.02165813  2.311541   -2.4370835   1.5379937  -0.07389566 -0.04032217]
-🌟 IK 求解耗时: 140.11 ms
-[a1x_robot] IK Solution Found - joints: [ 0.02165813  2.311541   -2.4370835   1.5379937  -0.07389566 -0.04032217], max joint diff: 0.0391 rad (2.24°)
-⏱️  ✓ 执行耗时=142ms, 误差=0.0mm
+last return: -1.0:   0%|                | 648/992999 [02:13<30:43:17,  8.97it/s][SpaceMouse] Intervention detected: using expert action, -0.16586087576692743
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16586088], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16586088]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.346 -> 0.180 (18.0mm)
+[a1x_robot] Action to be Solved - pos: [0.24297003 0.03262224 0.11561028], quat[x,y,z,w]: [-0.10193178  0.67413352  0.00959916  0.73147916]
+I0213 19:26:00.166927 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.167119 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.19234042  1.8685104  -0.75276595  0.38872334 -0.13893618  0.0293617 ]
+Best IK solution: [ 0.19234042  1.8685104  -0.75276595  0.38872334 -0.13893618  0.0293617 ]
+🌟 IK 求解耗时: 59.25 ms
+[a1x_robot] IK Solution Found - joints: [ 0.19234042  1.8685104  -0.75276595  0.38872334 -0.13893618  0.0293617 ], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 61, terminate: False
-  0%|                                                                                                  | 61/1000000 [00:18<47:02:19,  5.90it/s]EEF delta: pos=[ 0.006105   -0.00278566  0.00084856], rot=[-0.00183731  0.00788907  0.00988072], gripper: 0.925 -> 0.914 (91.4mm)
-[a1x_robot] Action to be Solved - pos: [0.40486995 0.00786927 0.27142121], quat[x,y,z,w]: [-4.91837423e-02  6.50220802e-01 -7.28891696e-04  7.58151262e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:56.923814 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:56.924139 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03850786  2.356322   -2.518494    1.5708     -0.07233045 -0.03730872]
-Best IK solution: [ 0.03850786  2.356322   -2.518494    1.5708     -0.07233045 -0.03730872]
-🌟 IK 求解耗时: 99.88 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03850786  2.356322   -2.518494    1.5708     -0.07233045 -0.03730872], max joint diff: 0.0296 rad (1.69°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
+last return: -1.0:   0%|                | 649/992999 [02:13<30:42:12,  8.98it/s][SpaceMouse] Intervention detected: using expert action, -0.1686320560686164
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16863206], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+ -0.16863206]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.320 -> 0.151 (15.1mm)
+[a1x_robot] Action to be Solved - pos: [0.24212109 0.03103718 0.11506327], quat[x,y,z,w]: [-0.10048732  0.67572568  0.00840256  0.7302236 ]
+I0213 19:26:00.275302 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.275490 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.1861702   1.8685104  -0.74936163  0.38872334 -0.13787234  0.02723404]
+Best IK solution: [ 0.1861702   1.8685104  -0.74936163  0.38872334 -0.13787234  0.02723404]
+🌟 IK 求解耗时: 51.31 ms
+[a1x_robot] IK Solution Found - joints: [ 0.1861702   1.8685104  -0.74936163  0.38872334 -0.13787234  0.02723404], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 62, terminate: False
-  0%|                                                                                                  | 62/1000000 [00:18<45:44:21,  6.07it/s]EEF delta: pos=[ 0.00323096 -0.0030351   0.00331199], rot=[-0.00718726  0.00380218  0.01030603], gripper: 0.925 -> 0.925 (92.5mm)
-[a1x_robot] Action to be Solved - pos: [0.40237779 0.01112458 0.27445071], quat[x,y,z,w]: [-0.05478532  0.64665076  0.00154373  0.76081469]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.077054 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.077345 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04719566  2.345618   -2.5133862   1.5708     -0.07602284 -0.03861365]
-Best IK solution: [ 0.04719566  2.345618   -2.5133862   1.5708     -0.07602284 -0.03861365]
-🌟 IK 求解耗时: 95.54 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04719566  2.345618   -2.5133862   1.5708     -0.07602284 -0.03861365], max joint diff: 0.0242 rad (1.39°)
+last return: -1.0:   0%|                | 650/992999 [02:13<31:23:20,  8.78it/s][SpaceMouse] Intervention detected: using expert action, -0.1692210984227252
+Raw action: [-0.         0.         0.        -0.        -0.        -0.
+ -0.1692211], Scaled action: [-0.         0.         0.        -0.        -0.        -0.
+ -0.1692211]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.253 -> 0.084 (8.4mm)
+[a1x_robot] Action to be Solved - pos: [0.24132181 0.02955085 0.11457102], quat[x,y,z,w]: [-0.09896114  0.67712518  0.00634408  0.72915563]
+I0213 19:26:00.395013 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.395206 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18085106  1.8685104  -0.7461702   0.38872334 -0.13808511  0.02723404]
+Best IK solution: [ 0.18085106  1.8685104  -0.7461702   0.38872334 -0.13808511  0.02723404]
+🌟 IK 求解耗时: 52.19 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18085106  1.8685104  -0.7461702   0.38872334 -0.13808511  0.02723404], max joint diff: 0.0000 rad (0.00°)
 ⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 63, terminate: False
-  0%|                                                                                                  | 63/1000000 [00:18<44:38:07,  6.22it/s]EEF delta: pos=[ 0.00657058  0.00706516 -0.00196475], rot=[ 0.00051569 -0.00302915  0.00095458], gripper: 0.924 -> 0.919 (91.9mm)
-[a1x_robot] Action to be Solved - pos: [0.40605436 0.00968498 0.26731344], quat[x,y,z,w]: [-0.04699487  0.64498061 -0.00580425  0.76273049]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.228990 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.229370 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04346921  2.3699431  -2.53768     1.5708     -0.0769608  -0.02175348]
-Best IK solution: [ 0.04346921  2.3699431  -2.53768     1.5708     -0.0769608  -0.02175348]
-🌟 IK 求解耗时: 108.85 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04346921  2.3699431  -2.53768     1.5708     -0.0769608  -0.02175348], max joint diff: 0.0862 rad (4.94°)
-⏱️  ✓ 执行耗时=111ms, 误差=0.0mm
+last return: -1.0:   0%|                | 651/992999 [02:13<30:59:03,  8.90it/s]Raw action: [ 0.00704317  0.00026788  0.008427    0.00431651 -0.02910067  0.00065677
+ -0.0081375 ], Scaled action: [ 0.00704317  0.00026788  0.008427    0.00431651 -0.02910067  0.00065677
+ -0.0081375 ]
+EEF delta: pos=[0.00704317 0.00026788 0.008427  ], rot=[ 0.00431651 -0.02910067  0.00065677], gripper: 0.205 -> 0.197 (19.7mm)
+[a1x_robot] Action to be Solved - pos: [0.2490701  0.03110679 0.12331183], quat[x,y,z,w]: [-0.09870672  0.66492081  0.00800471  0.74031968]
+I0213 19:26:00.504073 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.504261 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18168357  1.8544421  -0.7801724   0.4033345  -0.13878027  0.02360902]
+Best IK solution: [ 0.18168357  1.8544421  -0.7801724   0.4033345  -0.13878027  0.02360902]
+🌟 IK 求解耗时: 46.89 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18168357  1.8544421  -0.7801724   0.4033345  -0.13878027  0.02360902], max joint diff: 0.0321 rad (1.84°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 64, terminate: False
-  0%|                                                                                                  | 64/1000000 [00:18<44:47:12,  6.20it/s]
-🔍 [键盘监听器] 检测到按键: Key.ctrl, type=<enum 'Key'>
-EEF delta: pos=[ 0.00660802 -0.00111441  0.00611403], rot=[-5.62560232e-03 -3.66702443e-06  1.38758812e-02], gripper: 0.924 -> 0.928 (92.8mm)
-[a1x_robot] Action to be Solved - pos: [0.40548515 0.00423188 0.27844967], quat[x,y,z,w]: [-5.52493574e-02  6.44330319e-01  8.51683063e-05  7.62748937e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.391771 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.392010 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.02886952  2.3495433  -2.5355883   1.5708     -0.07551693 -0.05311392]
-Best IK solution: [ 0.02886952  2.3495433  -2.5355883   1.5708     -0.07551693 -0.05311392]
-🌟 IK 求解耗时: 116.87 ms
-[a1x_robot] IK Solution Found - joints: [ 0.02886952  2.3495433  -2.5355883   1.5708     -0.07551693 -0.05311392], max joint diff: 0.0509 rad (2.92°)
-⏱️  ✓ 执行耗时=119ms, 误差=0.0mm
+last return: -1.0:   0%|                | 652/992999 [02:13<30:42:24,  8.98it/s]Raw action: [ 0.00558136  0.00051361  0.00590991  0.00503314 -0.02422898  0.00807523
+  0.00144793], Scaled action: [ 0.00558136  0.00051361  0.00590991  0.00503314 -0.02422898  0.00807523
+  0.00144793]
+EEF delta: pos=[0.00558136 0.00051361 0.00590991], rot=[ 0.00503314 -0.02422898  0.00807523], gripper: 0.174 -> 0.176 (17.6mm)
+[a1x_robot] Action to be Solved - pos: [0.24830481 0.03245802 0.1211643 ], quat[x,y,z,w]: [-0.10210009  0.66507475  0.01287642  0.73965218]
+I0213 19:26:00.613155 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.613358 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18661101  1.8579504  -0.7715537   0.39205962 -0.13649794  0.01696432]
+Best IK solution: [ 0.18661101  1.8579504  -0.7715537   0.39205962 -0.13649794  0.01696432]
+🌟 IK 求解耗时: 51.33 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18661101  1.8579504  -0.7715537   0.39205962 -0.13649794  0.01696432], max joint diff: 0.0211 rad (1.21°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 65, terminate: False
-  0%|                                                                                                  | 65/1000000 [00:18<45:37:55,  6.09it/s]EEF delta: pos=[0.00484513 0.00340647 0.00279314], rot=[-0.0029045   0.00569932  0.00741106], gripper: 0.924 -> 0.928 (92.8mm)
-[a1x_robot] Action to be Solved - pos: [0.40583121 0.01425786 0.27637621], quat[x,y,z,w]: [-0.05666098  0.64191928  0.00281363  0.76467069]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.561802 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.562123 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.05497577  2.352037   -2.5354185   1.5708     -0.07753754 -0.03775564]
-Best IK solution: [ 0.05497577  2.352037   -2.5354185   1.5708     -0.07753754 -0.03775564]
-🌟 IK 求解耗时: 102.34 ms
-[a1x_robot] IK Solution Found - joints: [ 0.05497577  2.352037   -2.5354185   1.5708     -0.07753754 -0.03775564], max joint diff: 0.0263 rad (1.51°)
-⏱️  ✓ 执行耗时=104ms, 误差=0.0mm
+last return: -1.0:   0%|                | 653/992999 [02:13<30:29:46,  9.04it/s][SpaceMouse] Intervention detected: using expert action, 0.15095698599543292
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+  0.15095699], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+  0.15095699]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.174 -> 0.325 (32.5mm)
+[a1x_robot] Action to be Solved - pos: [0.24268317 0.0307119  0.11514856], quat[x,y,z,w]: [-0.09945781  0.67492905  0.00781929  0.73110723]
+I0213 19:26:00.721931 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.722122 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18425532  1.8685104  -0.7497872   0.38659576 -0.1374468   0.0274468 ]
+Best IK solution: [ 0.18425532  1.8685104  -0.7497872   0.38659576 -0.1374468   0.0274468 ]
+🌟 IK 求解耗时: 44.93 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18425532  1.8685104  -0.7497872   0.38659576 -0.1374468   0.0274468 ], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 66, terminate: False
-  0%|                                                                                                  | 66/1000000 [00:18<44:53:50,  6.19it/s]
-🔍 [键盘监听器] 检测到按键: 'x', type=<class 'pynput.keyboard._xorg.KeyCode'>
-🔍 [键盘监听器] 字符键: 'x'
-^XEEF delta: pos=[ 0.00718292 -0.00204812  0.00205506], rot=[ 0.00394516 -0.00373996 -0.00097825], gripper: 0.924 -> 0.926 (92.6mm)
-[a1x_robot] Action to be Solved - pos: [0.41154567 0.00531931 0.27449532], quat[x,y,z,w]: [-0.05031928  0.6358116  -0.00102494  0.77020161]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.717743 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.718079 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03174985  2.3747072  -2.5737286   1.5708     -0.07177858 -0.04688413]
-Best IK solution: [ 0.03174985  2.3747072  -2.5737286   1.5708     -0.07177858 -0.04688413]
-🌟 IK 求解耗时: 106.63 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03174985  2.3747072  -2.5737286   1.5708     -0.07177858 -0.04688413], max joint diff: 0.0433 rad (2.48°)
-⏱️  ✓ 执行耗时=108ms, 误差=0.0mm
+last return: -1.0:   0%|                | 654/992999 [02:14<30:21:22,  9.08it/s][SpaceMouse] Intervention detected: using expert action, 0.18692737993039418
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+  0.18692738], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+  0.18692738]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.177 -> 0.364 (36.4mm)
+[a1x_robot] Action to be Solved - pos: [0.24183968 0.03002821 0.11507049], quat[x,y,z,w]: [-0.09935477  0.67633222  0.00735575  0.72982823]
+I0213 19:26:00.831553 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.831746 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18212765  1.8678724  -0.74851066  0.38957447 -0.1374468   0.02638297]
+Best IK solution: [ 0.18212765  1.8678724  -0.74851066  0.38957447 -0.1374468   0.02638297]
+🌟 IK 求解耗时: 47.79 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18212765  1.8678724  -0.74851066  0.38957447 -0.1374468   0.02638297], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 67, terminate: False
-  0%|                                                                                                  | 67/1000000 [00:19<44:45:32,  6.21it/s]EEF delta: pos=[-0.00032212  0.00467311  0.00149093], rot=[ 0.00408295  0.01366856 -0.00234169], gripper: 0.924 -> 0.924 (92.4mm)
-[a1x_robot] Action to be Solved - pos: [0.40420404 0.00948774 0.27507355], quat[x,y,z,w]: [-5.08405012e-02  6.40923872e-01 -3.45166841e-04  7.65918870e-01]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:57.875138 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:57.875390 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.04128814  2.352765   -2.535556    1.5708     -0.07213491 -0.03831245]
-Best IK solution: [ 0.04128814  2.352765   -2.535556    1.5708     -0.07213491 -0.03831245]
-🌟 IK 求解耗时: 107.11 ms
-[a1x_robot] IK Solution Found - joints: [ 0.04128814  2.352765   -2.535556    1.5708     -0.07213491 -0.03831245], max joint diff: 0.0113 rad (0.65°)
-⏱️  ✓ 执行耗时=109ms, 误差=0.0mm
+last return: -1.0:   0%|                | 655/992999 [02:14<30:15:00,  9.11it/s][SpaceMouse] Intervention detected: using expert action, 0.17020551274371637
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+  0.17020551], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+  0.17020551]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.205 -> 0.376 (37.6mm)
+[a1x_robot] Action to be Solved - pos: [0.24517417 0.03078497 0.1175357 ], quat[x,y,z,w]: [-0.10025374  0.67151386  0.0096971   0.73411463]
+I0213 19:26:00.940259 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:00.940448 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18234043  1.8651063  -0.7599998   0.39042553 -0.13659574  0.02106383]
+Best IK solution: [ 0.18234043  1.8651063  -0.7599998   0.39042553 -0.13659574  0.02106383]
+🌟 IK 求解耗时: 53.87 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18234043  1.8651063  -0.7599998   0.39042553 -0.13659574  0.02106383], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 68, terminate: False
-  0%|                                                                                                  | 68/1000000 [00:19<44:30:36,  6.24it/s]EEF delta: pos=[0.00798833 0.00601789 0.00364222], rot=[ 0.00602359  0.0004024  -0.00096273], gripper: 0.924 -> 0.930 (93.0mm)
-[a1x_robot] Action to be Solved - pos: [0.41242242 0.01959104 0.27718421], quat[x,y,z,w]: [-0.05299808  0.63509931  0.00449382  0.77059709]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:58.035451 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:58.035775 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [[ 0.05319149  2.3529787  -2.535319    1.5614893  -0.07638298 -0.03744681]]
-⚠️ IK solve failed: local variable 'best' referenced before assignment
-⏱️  命令→状态读取 = 110.1ms
+last return: -1.0:   0%|                | 656/992999 [02:14<30:13:50,  9.12it/s][SpaceMouse] Intervention detected: using expert action, 0.193188212250961
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+  0.19318821], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+  0.19318821]
+EEF delta: pos=[-0.  0.  0.], rot=[-0. -0. -0.], gripper: 0.241 -> 0.434 (43.4mm)
+[a1x_robot] Action to be Solved - pos: [0.24766566 0.03150474 0.11898711], quat[x,y,z,w]: [-0.10031276  0.66778386  0.01078291  0.73748613]
+I0213 19:26:01.050265 137493517162304 logger.py:71] Updating safety params
+I0213 19:26:01.050449 137493517162304 logger.py:71] Updating optimizer params
+prev_q: [ 0.18319148  1.8640424  -0.767234    0.38851056 -0.13617021  0.01957447]
+Best IK solution: [ 0.18319148  1.8640424  -0.767234    0.38851056 -0.13617021  0.01957447]
+🌟 IK 求解耗时: 47.44 ms
+[a1x_robot] IK Solution Found - joints: [ 0.18319148  1.8640424  -0.767234    0.38851056 -0.13617021  0.01957447], max joint diff: 0.0000 rad (0.00°)
+⏱️  ✓ 执行耗时=100ms, 误差=0.0mm
 Step done: False, reward: False, path length: 69, terminate: False
-  0%|                                                                                                  | 69/1000000 [00:19<44:35:50,  6.23it/s]EEF delta: pos=[ 0.002357   -0.00079549  0.0055292 ], rot=[ 0.00601273  0.00902016 -0.00053996], gripper: 0.924 -> 0.929 (92.9mm)
-[a1x_robot] Action to be Solved - pos: [0.40961033 0.00642833 0.2801068 ], quat[x,y,z,w]: [-0.04871553  0.63357655  0.00131554  0.77214365]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:58.197143 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:58.197446 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.0345632   2.3597713  -2.5671017   1.5708     -0.06765286 -0.04312515]
-Best IK solution: [ 0.0345632   2.3597713  -2.5671017   1.5708     -0.06765286 -0.04312515]
-🌟 IK 求解耗时: 108.46 ms
-[a1x_robot] IK Solution Found - joints: [ 0.0345632   2.3597713  -2.5671017   1.5708     -0.06765286 -0.04312515], max joint diff: 0.0092 rad (0.53°)
-⏱️  ✓ 执行耗时=110ms, 误差=0.0mm
-Step done: False, reward: False, path length: 70, terminate: False
-  0%|                                                                                                  | 70/1000000 [00:19<44:40:44,  6.22it/s]EEF delta: pos=[ 0.00559147 -0.00016234  0.00055529], rot=[0.00406643 0.01184898 0.00780371], gripper: 0.924 -> 0.914 (91.4mm)
-[a1x_robot] Action to be Solved - pos: [0.41114081 0.00911835 0.27326034], quat[x,y,z,w]: [-0.0514282   0.63941511  0.00485971  0.7671244 ]
-假设输入是[x,y,z,w]，转换为[w,x,y,z]
-I0210 10:23:58.358774 140540777723712 logger.py:71] Updating safety params
-I0210 10:23:58.359111 140540777723712 logger.py:71] Updating optimizer params
-prev_q: [ 0.03957798  2.3732584  -2.5659835   1.5708     -0.06370053 -0.04725473]
-Best IK solution: [ 0.03957798  2.3732584  -2.5659835   1.5708     -0.06370053 -0.04725473]
-🌟 IK 求解耗时: 100.16 ms
-[a1x_robot] IK Solution Found - joints: [ 0.03957798  2.3732584  -2.5659835   1.5708     -0.06370053 -0.04725473], max joint diff: 0.0249 rad (1.43°)
-⏱️  ✓ 执行耗时=102ms, 误差=0.0mm
-Step done: False, reward: False, path length: 71, terminate: False
-  0%|                                                                       
+last return: -1.0:   0%|                | 657/992999 [02:14<30:16:00,  9.11it/s][SpaceMouse] Intervention detected: using expert action, 0.16636472132989033
+Raw action: [-0.          0.          0.         -0.         -0.         -0.
+  0.16636472], Scaled action: [-0.          0.          0.         -0.         -0.         -0.
+  0.16636472]
+

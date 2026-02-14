@@ -1,6 +1,6 @@
 """
 Training configuration for A1_X robot.
-Adapted from task1_pick_banana for joint-space control.
+Adapted from Insert_block for joint-space control.
 """
 import os
 import jax
@@ -19,7 +19,7 @@ from serl_launcher.wrappers.chunking import ChunkingWrapper
 from serl_launcher.networks.reward_classifier import load_classifier_func
 
 from experiments.config import DefaultTrainingConfig
-from experiments.a1x_pick_banana.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
+from experiments.Insert_block.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
 
 
 class EnvConfig(DefaultA1XEnvConfig):
@@ -130,7 +130,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Pick up the banana"
+    task_desc = "Fold the towel" 
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"

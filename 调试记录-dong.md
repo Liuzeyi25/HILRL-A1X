@@ -27,8 +27,8 @@ cd /home/dungeon_master/conrft
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name a1x_pick_banana \
-     --successes_needed 15 \
-     --demo_data_subdir 20260210
+     --successes_needed 30 \
+     --demo_data_subdir 20260213
 
 ```
 ```bash

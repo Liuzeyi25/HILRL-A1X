@@ -44,7 +44,7 @@ class A1Kinematics:
         # 如果输入是[x,y,z,w]格式，需要转换
         if isinstance(quat, (np.ndarray, list, tuple)) and len(quat) == 4:
             # 假设输入是[x,y,z,w]，转换为[w,x,y,z]
-            print("假设输入是[x,y,z,w]，转换为[w,x,y,z]")
+            #print("假设输入是[x,y,z,w]，转换为[w,x,y,z]")
             quat_wxyz = [quat[3], quat[0], quat[1], quat[2]]
         else:
             quat_wxyz = quat
@@ -68,12 +68,16 @@ class A1Kinematics:
             best = sols[torch.argmin(torch.norm(sols - ref, dim=1))]
             self.prev_q = best
             res.js_solution.position = best
-        
-        print("prev_q:", self.prev_q.cpu().numpy())
-        print(f"Best IK solution: {best.cpu().numpy()}")
+            
+            # print("prev_q:", self.prev_q.cpu().numpy())
+            # print(f"Best IK solution: {best.cpu().numpy()}")
+        else:
+            print("⚠️ IK求解失败: 所有seeds都未找到可行解")
+            if self.prev_q is not None:
+                print(f"   保持上一次的关节位置: {self.prev_q.cpu().numpy()}")
             
         elapsed_time = (time.time() - start_time) * 1000  # ms
-        print(f"🌟 IK 求解耗时: {elapsed_time:.2f} ms")
+        # print(f"🌟 IK 求解耗时: {elapsed_time:.2f} ms")
         return res
         
         # # 如果提供了current_joints，使用它作为参考

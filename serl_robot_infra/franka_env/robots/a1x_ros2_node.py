@@ -544,7 +544,7 @@ class A1XRobotZMQNode(Node):
                 msg.name = [f"joint_{i+1}" for i in range(len(arm_positions))]
         
         msg.position = arm_positions
-        msg.velocity = [2.0] * len(arm_positions)  # 恒定速度
+        msg.velocity = [1.0] * len(arm_positions)  # 恒定速度
         msg.effort = []
         # 🚀 高频循环中禁用 print，避免阻塞！
         # print(f"Publishing joint command: positions={arm_positions}, gripper={gripper_position}")

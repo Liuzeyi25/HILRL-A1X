@@ -104,9 +104,23 @@ class A1XEnv(gym.Env):
 
         # Action/Observation Space
         # Action: delta joint positions (7 DOF)
+        # self.action_space = gym.spaces.Box(
+        #     np.ones((7,), dtype=np.float32) * -0.01,
+        #     np.ones((7,), dtype=np.float32) * 0.01,
+        # )
+        
         self.action_space = gym.spaces.Box(
-            np.ones((7,), dtype=np.float32) * -1,
-            np.ones((7,), dtype=np.float32),
+            low=np.array([
+                -0.02, -0.02, -0.02,   # 前三维
+                -0.01, -0.01, -0.1,  # 第4-6维
+                -0.2                # 最后一维
+            ], dtype=np.float32),
+            high=np.array([
+                0.02,  0.02,  0.02,
+                0.01, 0.01, 0.1,
+                0.2
+            ], dtype=np.float32),
+            dtype=np.float32
         )
 
         self.observation_space = gym.spaces.Dict(
@@ -134,6 +148,9 @@ class A1XEnv(gym.Env):
         self.curr_joint_velocities = None
         self.curr_ee_pos_rot_gripper = None
         self.curr_gripper_position = None
+        
+        # 保存reset时的旋转值（rx, ry），用于在step中固定这两个维度
+        self.reset_ee_rotation = None
 
         if fake_env:
             return
@@ -186,10 +203,11 @@ class A1XEnv(gym.Env):
         """
         start_time = time.time()
         # haoyuan debug
-        # action = np.clip(action, self.action_space.low, self.action_space.high)        
+        action = np.clip(action, self.action_space.low, self.action_space.high)        
         # Scale action
         scaled_action = action * self.action_scale
         
+        # print(f"Raw action: {action}, Scaled action: {scaled_action}")
         # For gripper: convert normalized delta to absolute position (mm)
         # self.curr_ee_pos_rot_gripper[6] is current gripper in [0, 1]
         current_gripper_normalized = self.curr_ee_pos_rot_gripper[6]
@@ -197,11 +215,13 @@ class A1XEnv(gym.Env):
         new_gripper_normalized = np.clip(current_gripper_normalized + delta_gripper_normalized, 0.0, 1.0)
         new_gripper_mm = new_gripper_normalized * 100.0  # Convert to [0, 100] mm
         
+        #scaled_action[3], scaled_action[4] = self.reset_ee_rotation
+        
         # Construct EEF delta command: [dx, dy, dz, drx, dry, drz, gripper_absolute_mm]
         eef_command = np.concatenate([scaled_action[:6], [new_gripper_mm]])
         
         # Debug print
-        print(f"EEF delta: pos={scaled_action[:3]}, rot={scaled_action[3:6]}, gripper: {current_gripper_normalized:.3f} -> {new_gripper_normalized:.3f} ({new_gripper_mm:.1f}mm)")
+        # print(f"EEF delta: pos={scaled_action[:3]}, rot={scaled_action[3:6]}, gripper: {current_gripper_normalized:.3f} -> {new_gripper_normalized:.3f} ({new_gripper_mm:.1f}mm)")
         
         # Send EEF command to robot with intelligent waiting
         cmd_send_time = time.time()
@@ -228,7 +248,7 @@ class A1XEnv(gym.Env):
         if result:
             reached_str = "✓" if result.get('reached', False) else "✗"
             error_mm = result.get('final_error', 0) * 1000
-            print(f"⏱️  {reached_str} 执行耗时={(state_read_time - cmd_send_time)*1000:.0f}ms, 误差={error_mm:.1f}mm")
+            # print(f"⏱️  {reached_str} 执行耗时={(state_read_time - cmd_send_time)*1000:.0f}ms, 误差={error_mm:.1f}mm")
         else:
             print(f"⏱️  命令→状态读取 = {(state_read_time - cmd_send_time)*1000:.1f}ms")
         
@@ -330,6 +350,10 @@ class A1XEnv(gym.Env):
         self.curr_path_length = 0
 
         self._update_curr_joint_state()
+        
+        # 保存reset时的旋转值（rx, ry），用于在step中固定这两个维度
+   #     self.reset_ee_rotation = self.curr_ee_pos_rot_gripper[3:5].copy()
+       # print(f"🔒 Reset时保存初始旋转 (rx, ry): {self.reset_ee_rotation}, 后续step将固定这两个维度")
         
         # Update IK solver seed to current joint state after reset
         if hasattr(self.robot, 'update_ik_seed'):
