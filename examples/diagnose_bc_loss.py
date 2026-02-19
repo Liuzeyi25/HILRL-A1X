@@ -5,7 +5,7 @@
 
 用法:
 python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
-  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260216/traj_003_2026-02-16_15-56-50.pkl \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/toast_bread/demo_data/20260218/traj_001_2026-02-19_14-33-33.pkl \
   --show_first_frame \
   --detailed  # 可选: 显示详细的递归结构分析
 """

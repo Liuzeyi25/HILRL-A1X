@@ -6,7 +6,7 @@ import os
 import jax
 import numpy as np
 import jax.numpy as jnp
-
+import gymnasium as gym
 from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
@@ -86,7 +86,10 @@ class EnvConfig(DefaultA1XEnvConfig):
 # - 0.0451063829787234
 
     RESET_JOINT_STATE = np.array([-0.00851063829787234, 1.7708510638297872, -0.08212765957446809, -1.3238297872340425, -0.15723404255319148, 0.0451063829787234, 100.0])  # 夹爪张开
-    
+    ACTION_SPACE = gym.spaces.Box(
+            low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+            high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+        )
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发

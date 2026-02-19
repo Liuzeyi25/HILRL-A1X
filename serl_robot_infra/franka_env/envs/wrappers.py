@@ -467,12 +467,12 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         self.action_space = gym.spaces.Box(
             low=np.array([
-                -0.001, -0.001, -0.001,   # 前三维
+                -0.005, -0.005, -0.005,   # 前三维
                 -0.01, -0.05, -0.01,  # 第4-6维
                 -0.2                # 最后一维
             ], dtype=np.float32),
             high=np.array([
-                0.001,  0.001,  0.001,
+                0.005,  0.005,  0.005,
                 0.01, 0.05, 0.01,
                 0.2
             ], dtype=np.float32),

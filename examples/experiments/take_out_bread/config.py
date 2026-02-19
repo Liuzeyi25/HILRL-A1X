@@ -6,12 +6,11 @@ import os
 import jax
 import numpy as np
 import jax.numpy as jnp
-
+import gymnasium as gym
 from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
     MultiCameraBinaryRewardClassifierWrapper,
-    #ManualRewardWrapper,
 )
 from franka_env.envs.a1x_env import DefaultA1XEnvConfig
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
@@ -79,7 +78,10 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 重置关节配置 (中立位置)
     RESET_JOINT_STATE = np.array([-0.06957447, 1.79808511, -1.39553191, 1.14404255, -0.05425532, -0.01276596, 100.0])  # 夹爪张开
-    
+    ACTION_SPACE = gym.spaces.Box(
+        low=np.array([-0.002, -0.002, -0.002, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+        high=np.array([0.002, 0.002, 0.002, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+    )
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发

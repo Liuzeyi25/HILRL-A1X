@@ -64,6 +64,10 @@ class DefaultA1XEnvConfig:
     # Control
     ACTION_SCALE: np.ndarray = np.ones((7,))
     USE_GRIPPER: bool = True
+    ACTION_SPACE: gym.spaces.Box = gym.spaces.Box(
+        low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+        high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+    )
 
     # Misc
     DISPLAY_IMAGE: bool = True
@@ -87,8 +91,18 @@ class A1XEnv(gym.Env):
         save_video: bool = True,
         config: DefaultA1XEnvConfig = None,
     ):
+        
+        # self.action_space = gym.spaces.Box(
+        #     low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+        #     high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+        # )
+
         self.config = config or DefaultA1XEnvConfig()
         self.action_scale = self.config.ACTION_SCALE
+        self.action_space = self.config.ACTION_SPACE 
+        print("当前 action_space low:", self.action_space.low)
+        print("当前 action_space high:", self.action_space.high)
+        print("config 类型:", type(self.config))
         self._TARGET_JOINT_STATE = self.config.TARGET_JOINT_STATE
         self._RESET_JOINT_STATE = self.config.RESET_JOINT_STATE
         self._REWARD_THRESHOLD = self.config.REWARD_THRESHOLD
@@ -101,10 +115,7 @@ class A1XEnv(gym.Env):
         self.recording_frames = []
 
         # Action: [dx, dy, dz, drx, dry, drz, d_gripper]
-        self.action_space = gym.spaces.Box(
-            low=np.array([-0.005, -0.005, -0.005, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-            high=np.array([0.005, 0.005, 0.005, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
-        )
+
 
         self.observation_space = gym.spaces.Dict({
             "state": gym.spaces.Dict({
@@ -175,8 +186,8 @@ class A1XEnv(gym.Env):
         # Gripper: normalized delta -> absolute mm
         current_gripper = self.curr_ee_pos_rot_gripper[6]
         new_gripper_mm = np.clip(current_gripper + scaled_action[6], 0.0, 1.0) * 100.0
-        if not self.use_gripper:
-            new_gripper_mm = 1.5
+       # if not self.use_gripper:
+        #    new_gripper_mm = 1.5
 
         # (旋转控制已启用，不再清零 rotation deltas)
         # scaled_action[3:5] = 0.0   # 禁用xy旋转

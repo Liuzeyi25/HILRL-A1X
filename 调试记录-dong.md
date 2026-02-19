@@ -29,23 +29,33 @@ ros2 topic echo /hdas/pose_ee_arm
 ```bash
 cd /home/dungeon_master/conrft
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
+###香蕉0.005
+
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name a1x_pick_banana \
      --successes_needed 30 \
      --demo_data_subdir 20260216
 
+##0.001
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name insert_block \
      --successes_needed 1  \
      --demo_data_subdir 20260213
 
+##0.002
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name insert_network_cable \
      --successes_needed 2  \
      --demo_data_subdir 20260218
 
+##0.002
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name fold_towel \
+     --successes_needed 2  \
+     --demo_data_subdir 20260218
+
+python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
+     --exp_name toast_bread \
      --successes_needed 2  \
      --demo_data_subdir 20260218
 ```

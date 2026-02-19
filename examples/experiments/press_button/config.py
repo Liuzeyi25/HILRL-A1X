@@ -6,12 +6,11 @@ import os
 import jax
 import numpy as np
 import jax.numpy as jnp
-
+import gymnasium as gym
 from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
     MultiCameraBinaryRewardClassifierWrapper,
-    #ManualRewardWrapper,
 )
 from franka_env.envs.a1x_env import DefaultA1XEnvConfig
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
@@ -76,10 +75,13 @@ class EnvConfig(DefaultA1XEnvConfig):
     # 格式: [joint1, joint2, joint3, joint4, joint5, joint6, gripper(0-100mm)]
     # 注意：必须是7维！(6个关节 + 1个夹爪)
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
-    
-    # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.06957447, 1.79808511, -1.39553191, 1.14404255, -0.05425532, -0.01276596, 100.0])  # 夹爪张开
     USE_GRIPPER = False 
+    # 重置关节配置 (中立位置)
+    RESET_JOINT_STATE = np.array([-0.00851063829787234, 1.7708510638297872, -0.08212765957446809, -1.3238297872340425, -0.15723404255319148, 0.0451063829787234, 100.0])  # 夹爪张开
+    ACTION_SPACE = gym.spaces.Box(
+        low=np.array([-0.002, -0.002, -0.002, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+        high=np.array([0.002, 0.002, 0.002, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+    )
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -130,7 +132,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Press the button"
+    task_desc = "Take out the bread"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"

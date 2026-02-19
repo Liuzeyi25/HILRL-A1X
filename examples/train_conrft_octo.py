@@ -488,6 +488,11 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
             f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 80 + "\n\n")
 
+    # 📊 成功率统计缓冲区：收集自上次记录以来的所有轨迹成功情况
+    success_buffer = []
+    # 📊 干预率统计缓冲区：收集自上次记录以来的所有轨迹干预率
+    intervention_rate_buffer = []
+
     def stats_callback(type: str, payload: dict) -> dict:
         """Callback for when server receives stats request."""
         assert type == "send-stats", f"Invalid request type: {type}"
@@ -508,6 +513,35 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
                 
                 succeed_val = ep_info.get('succeed', 'N/A')
                 step_val = ep_info.get('total_steps', 'N/A')
+                
+                # 📊 收集成功率数据到缓冲区
+                if 'succeed' in ep_info:
+                    success_value = ep_info['succeed']
+                    # 转换为标量（处理可能的 numpy 数组）
+                    if hasattr(success_value, 'item'):
+                        success_value = float(success_value.item())
+                    else:
+                        success_value = float(success_value)
+                    success_buffer.append(success_value)
+                
+                # 📊 收集干预率数据到缓冲区
+                if 'intervention_steps' in ep_info and 'total_steps' in ep_info:
+                    intervention_steps = ep_info['intervention_steps']
+                    total_steps = ep_info['total_steps']
+                    # 转换为标量
+                    if hasattr(intervention_steps, 'item'):
+                        intervention_steps = float(intervention_steps.item())
+                    else:
+                        intervention_steps = float(intervention_steps)
+                    if hasattr(total_steps, 'item'):
+                        total_steps = float(total_steps.item())
+                    else:
+                        total_steps = float(total_steps)
+                    
+                    # 计算该轨迹的干预率
+                    if total_steps > 0:
+                        intervention_rate = intervention_steps / total_steps
+                        intervention_rate_buffer.append(intervention_rate)
                 
                 print_green(
                     f"📥 [Learner] Received stats from Actor: "
@@ -685,6 +719,27 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
         if step % config.log_period == 0 and wandb_logger:
             wandb_logger.log(update_info, step=step)
             wandb_logger.log({"timer": timer.get_average_times()}, step=step)
+            
+            # 📊 计算并记录平均成功率
+            if len(success_buffer) > 0:
+                avg_success_rate = np.mean(success_buffer)
+                wandb_logger.log({
+                    "metrics/success_rate": avg_success_rate,
+                    "metrics/trajectories_count": len(success_buffer),
+                }, step=step)
+                print_green(f"📊 [Learner] Step {step}: Success Rate = {avg_success_rate:.2%} (based on {len(success_buffer)} trajectories)")
+                # 清空缓冲区，准备下一个记录周期
+                success_buffer.clear()
+            
+            # 📊 计算并记录平均干预率
+            if len(intervention_rate_buffer) > 0:
+                avg_intervention_rate = np.mean(intervention_rate_buffer)
+                wandb_logger.log({
+                    "metrics/intervention_rate": avg_intervention_rate,
+                }, step=step)
+                print_green(f"📊 [Learner] Step {step}: Intervention Rate = {avg_intervention_rate:.2%} (based on {len(intervention_rate_buffer)} trajectories)")
+                # 清空缓冲区，准备下一个记录周期
+                intervention_rate_buffer.clear()
         
         # 同时保存到txt文件（在线训练阶段）
         if step % config.log_period == 0 and log_file_path:
