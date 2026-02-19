@@ -20,7 +20,7 @@ from scipy.spatial.transform import Rotation as R
 import sys
 
 # ==================== 配置 ====================
-DEFAULT_PKL_PATH = "/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_2026-02-06_19-39-14.pkl"
+DEFAULT_PKL_PATH = "/home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_2026-02-06_19-39-14.pkl"
 
 
 def euler_to_quat(euler):

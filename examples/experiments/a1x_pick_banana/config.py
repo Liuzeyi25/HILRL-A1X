@@ -136,12 +136,12 @@ class TrainConfig(DefaultTrainingConfig):
     task_desc = "Pick up the banana"
     
     # Octo model path (如果使用预训练模型)
-    # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"
+    # octo_path = "/home/luka/Haoyuan/Safevla_RL/octo_model/octo-small-1.5"
     octo_path = "hf://rail-berkeley/octo-small-1.5"
     teleoperation_device = "spacemouse"  # "gello", "spacemouse", or None
     
     # 🆕 新版 GelloIntervention 配置（基于 launch_yaml.py）
-    gello_config_path = "/home/dungeon_master/conrft/Gello/gello_software/configs/yam_A1_X.yaml"  # YAML 配置文件路径
+    gello_config_path = "/home/luka/Haoyuan/Safevla_RL/Gello/gello_software/configs/yam_A1_X.yaml"  # YAML 配置文件路径
     
     # ⚠️ 旧版参数（已弃用，保留用于向后兼容）
     gello_port = "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTA7NNNU-if00-port0"

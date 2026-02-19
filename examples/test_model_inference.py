@@ -4,9 +4,9 @@
 
 用法：
     python test_model_inference.py \
-        --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft \
+        --checkpoint_path=/home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana/conrft \
         --checkpoint_step=30000 \
-        --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_*.pkl \
+        --demo_path=/home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_*.pkl \
         --num_samples=100
 """
 

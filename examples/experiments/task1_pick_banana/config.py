@@ -113,7 +113,7 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
     reward_neg = -0.05
     task_desc = "Put the yellow banana to the green plate"
-    octo_path = "/home/dungeon_master/conrft/octo_model/octo-small"
+    octo_path = "/home/luka/Haoyuan/Safevla_RL/octo_model/octo-small"
     
     # Teleoperation device: "spacemouse", "gello", or None
     teleoperation_device = "spacemouse"

@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 # 读取文件
-pkl_path = "/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_2026-02-05_19-45-31.pkl"
+pkl_path = "/home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana/demo_data/traj_001_manual_2026-02-05_19-45-31.pkl"
 with open(pkl_path, 'rb') as f:
     data = pickle.load(f)
 

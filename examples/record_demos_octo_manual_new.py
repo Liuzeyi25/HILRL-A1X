@@ -1,7 +1,7 @@
 ###
 ###```
 ###  cd conrft
-# ``python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \\n    --exp_name a1x_pick_banana \\n    --successes_needed 10`
+# ``python /home/luka/Haoyuan/Safevla_RL/examples/record_demos_octo_manual_new.py \\n    --exp_name a1x_pick_banana \\n    --successes_needed 10`
 ###
 import os
 from tqdm import tqdm

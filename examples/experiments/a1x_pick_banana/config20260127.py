@@ -121,7 +121,7 @@ class TrainConfig(DefaultTrainingConfig):
     task_desc = "Pick banana and place on the plate"
     
     # Octo model path (如果使用预训练模型)
-    # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"
+    # octo_path = "/home/luka/Haoyuan/Safevla_RL/octo_model/octo-small-1.5"
     octo_path = "hf://rail-berkeley/octo-small-1.5"
     teleoperation_device = "gello"  # "gello", "spacemouse", or None
     gello_port = "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTA7NNNU-if00-port0"
