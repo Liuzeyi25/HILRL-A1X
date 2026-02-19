@@ -1,0 +1,26 @@
+# A1_X robot configuration for Gello
+
+# Robot configuration
+robot:
+  _target_: gello.robots.A1_X.A1XRobot
+  num_dofs: 7  # 6 arm joints + 1 gripper
+  node_name: "a1x_gello_node"
+  port: 6100  # ZMQ port for communication
+  python_path: "/usr/bin/python3"  # System Python 3.10 with ROS2
+
+# Agent configuration (Gello leader arm)
+agent:
+  _target_: gello.agents.gello_agent.GelloAgent
+  port: /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTA7NNNU-if00-port0
+  dynamixel_config:
+    _target_: gello.agents.gello_agent.DynamixelRobotConfig
+    joint_ids: [1, 2, 3, 4, 5, 6]
+    joint_offsets: [1.5708, 4.71239, 4.71239, 3.14159, 1.5708, 3.14159]
+    joint_signs: [1.0, -1.0, -1.0, -1.0, 1.0, 1.0]
+    gripper_config: [7, 139.66015625, 199.16015625]
+  start_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+# Control frequency
+hz: 500
+
+# Optional: start joints position for robot
+start_joints: [0.0, -0.5, 0.0, -1.5, 0.0, 1.0, 0.0]

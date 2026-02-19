@@ -1,0 +1,753 @@
+#!/usr/bin/env python3
+
+import glob
+import time
+import jax
+import jax.numpy as jnp
+import numpy as np
+import tqdm
+from absl import app, flags
+from flax.training import checkpoints
+from flax import config as flax_config
+flax_config.update('flax_use_orbax_checkpointing', False)
+from flax.core import frozen_dict
+import os
+import copy
+import pickle as pkl
+from gymnasium.wrappers.record_episode_statistics import RecordEpisodeStatistics
+from natsort import natsorted
+
+from serl_launcher.agents.continuous.conrft_single_octo_cp import ConrftCPOctoAgentSingleArm
+from serl_launcher.utils.timer_utils import Timer
+from serl_launcher.utils.train_utils import concat_batches
+
+from agentlace.trainer import TrainerServer, TrainerClient
+from agentlace.data.data_store import QueuedDataStore
+
+from data_util import add_mc_returns_to_trajectory, add_next_embeddings_to_trajectory
+
+from serl_launcher.utils.launcher import (
+    make_conrft_octo_cp_pixel_agent_single_arm,
+    make_trainer_config,
+    make_wandb_logger,
+)
+from serl_launcher.data.data_store import MemoryEfficientReplayBufferDataStore
+
+from experiments.mappings import CONFIG_MAPPING
+
+from octo.model.octo_model import OctoModel
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string(
+    "exp_name", None, "Name of experiment corresponding to folder.")
+flags.DEFINE_integer("seed", 42, "Random seed.")
+flags.DEFINE_boolean("learner", False, "Whether this is a learner.")
+flags.DEFINE_boolean("actor", False, "Whether this is an actor.")
+flags.DEFINE_string("ip", "localhost", "IP address of the learner.")
+flags.DEFINE_multi_string("demo_path", None, "Path to the demo data.")
+flags.DEFINE_string("checkpoint_path", None, "Path to save checkpoints.")
+flags.DEFINE_integer("eval_checkpoint_step", 0,
+                     "Step to evaluate the checkpoint.")
+flags.DEFINE_integer("eval_n_trajs", 20, "Number of trajectories to evaluate.")
+
+flags.DEFINE_float("gamma", 0.95, "return discount")
+flags.DEFINE_float("reward_neg", 0.0, "reward_neg for spase reward envs")
+flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
+flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
+flags.DEFINE_float("q_weight", 0.1, "q_weight ")
+flags.DEFINE_float("bc_weight", 1.0, "bc_weight")
+
+flags.DEFINE_integer("pretrain_steps", 2000, "Number of pretrain steps.")
+
+flags.DEFINE_boolean(
+    "debug", False, "Debug mode."
+)  # debug mode will disable wandb logging
+
+
+devices = jax.local_devices()
+num_devices = len(devices)
+sharding = jax.sharding.PositionalSharding(devices)
+
+
+def print_green(x):
+    return print("\033[92m {}\033[00m".format(x))
+
+
+def reorganize_transitions_to_chunks(transitions, chunk_size):
+    """
+    📦 方案B：离线重组transitions为action chunks
+    
+    输入: [(s0,a0), (s1,a1), (s2,a2), ...]
+    输出: [(s0,[a0,a1,a2,a3]), (s1,[a1,a2,a3,a4]), ...]
+    
+    Args:
+        transitions: List of single-step transitions (actions可能是单步或chunk)
+        chunk_size: Action chunk size (e.g., 4)
+    
+    Returns:
+        List of chunked transitions
+    """
+    if len(transitions) == 0:
+        return []
+    
+    chunked_transitions = []
+    
+    # 获取action_dim（从第一个单步动作中获取）用于对齐dtype
+    first_action = transitions[0]['actions']
+    if first_action.ndim == 1:
+        action_dim = first_action.shape[0]
+    else:  # ndim == 2, 已经是chunk
+        action_dim = first_action.shape[1]
+    
+    for i in range(len(transitions)):
+        trans = transitions[i].copy()
+        
+        # 收集当前及未来的actions: [a_i, a_{i+1}, ..., a_{i+chunk_size-1}]
+        action_chunk = []
+        for j in range(chunk_size):
+            if i + j < len(transitions):
+                action = transitions[i + j]['actions']
+                # 如果是单步动作，直接添加；如果是chunk，取第一步
+                if action.ndim == 1:
+                    action_chunk.append(action)
+                # else:  # 已经是chunk，只取第一步（因为只有第一步被执行了）
+                #     action_chunk.append(action[0])
+            else:
+                # Episode结束，用单步的0填充
+                action_chunk.append(np.zeros(action_dim, dtype=first_action.dtype))
+        
+        # 更新action为chunk
+        trans['actions'] = np.array(action_chunk)  # Shape: [chunk_size, action_dim]
+        
+        chunked_transitions.append(trans)
+    
+    return chunked_transitions
+
+
+##############################################################################
+
+
+def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
+    """
+    This is the actor loop, which runs when "--actor" is set to True.
+    """
+    # 🎯 评估模式：不连接 learner server
+    is_eval_mode = FLAGS.eval_checkpoint_step > 0
+    
+    start_step = (
+        int(os.path.basename(natsorted(glob.glob(os.path.join(
+            FLAGS.checkpoint_path, "buffer/*.pkl")))[-1])[12:-4]) + 1
+        if FLAGS.checkpoint_path and os.path.exists(os.path.join(FLAGS.checkpoint_path, "buffer"))
+        else 0
+    )
+
+    client = None
+    if not is_eval_mode:
+        # 训练模式：连接 learner server
+        datastore_dict = {
+            "actor_env": data_store,
+            "actor_env_intvn": intvn_data_store,
+        }
+
+        client = TrainerClient(
+            "actor_env",
+            FLAGS.ip,
+            make_trainer_config(),
+            data_stores=datastore_dict,
+            wait_for_server=True,
+            timeout_ms=3000,
+        )
+
+        # Function to update the agent with new params
+        def update_params(params):
+            nonlocal agent
+            agent = agent.replace(state=agent.state.replace(params=params))
+
+        client.recv_network_callback(update_params)
+    else:
+        print_green("🎯 评估模式：跳过 learner 连接")
+
+    transitions = []
+    demo_transitions = []
+
+    obs, _ = env.reset()
+    done = False
+
+    # training loop
+    timer = Timer()
+    running_return = 0.0
+    already_intervened = False
+    intervention_count = 0
+    intervention_steps = 0
+    trajectory = []
+
+    pbar = tqdm.tqdm(range(start_step, config.max_steps), dynamic_ncols=True)
+    for step in pbar:
+        timer.tick("total")
+
+        with timer.context("sample_actions"):
+            if step < config.random_steps:
+                actions = env.action_space.sample()
+            else:
+                sampling_rng, key = jax.random.split(sampling_rng)
+                actions, action_embeddings = agent.sample_actions(
+                    observations=jax.device_put(obs),
+                    tasks=jax.device_put(tasks),
+                    seed=key,
+                    argmax=False,
+                )
+                actions = np.asarray(jax.device_get(actions))
+                # 🔍 Debug: 打印 action shape
+                if step % 100 == 0:
+                    print_green(f"[Actor] Step {step}: actions shape = {actions.shape}")
+
+        # Step environment
+        with timer.context("step_env"):
+            next_obs, reward, done, truncated, info = env.step(actions)
+            if "left" in info:
+                info.pop("left")
+            if "right" in info:
+                info.pop("right")
+
+            # 🎯 处理 chunk 提前结束的情况（用0填充未执行的动作）
+            if 'executed_actions' in info and 'total_chunk_size' in info:
+                executed = info.pop('executed_actions')
+                total = info.pop('total_chunk_size')
+                if executed < total:
+                    # 动作提前结束，用0填充剩余部分
+                    if actions.ndim == 2:  # shape: (chunk_size, action_dim)
+                        padding = np.zeros((total - executed, actions.shape[1]), dtype=actions.dtype)
+                        actions = np.concatenate([actions[:executed], padding], axis=0)
+                    # 如果是1维，不需要填充（说明 chunk_size=None）
+                    
+            # override the action with the intervention action
+            if "intervene_action_eef" in info:
+                actions = info.pop("intervene_action_eef")  # 单步干预动作 (action_dim,)
+                # 干预时直接保存单步动作，在episode结束后统一重组
+                    
+                intervention_steps += 1
+                if not already_intervened:
+                    intervention_count += 1
+                already_intervened = True
+            else:
+                already_intervened = False
+
+            running_return += reward
+            transition = dict(
+                observations=obs,
+                actions=actions,
+                next_observations=next_obs,
+                rewards=reward,
+                masks=1.0 - done,
+                dones=done,
+                intervened=already_intervened,
+                embeddings=action_embeddings,
+            )
+            # 🔍 Debug: 打印 transition action shape
+            if step % 100 == 0:
+                print_green(f"[Actor] Step {step}: Transition actions shape = {transition['actions'].shape}, intervened = {already_intervened}")
+            if 'grasp_penalty' in info:
+                transition['grasp_penalty'] = info['grasp_penalty']
+
+            trajectory.append(transition)
+
+            obs = next_obs
+            if done or truncated:
+                trajectory = add_mc_returns_to_trajectory(trajectory, FLAGS.gamma,
+                                                          FLAGS.reward_scale, FLAGS.reward_bias, FLAGS.reward_neg, is_sparse_reward=False
+                                                          )
+                trajectory = add_next_embeddings_to_trajectory(trajectory)
+                
+                # 📦 检查是否需要重组：如果有任何单步动作，需要重组整个trajectory
+                if hasattr(config, 'action_chunk_size') and config.action_chunk_size:
+                    # 检查是否有单步动作（干预产生）
+                    has_single_step = any(t['actions'].ndim == 1 for t in trajectory)
+                    if has_single_step:
+                        # 有单步动作，需要重组整个trajectory
+                        trajectory = reorganize_transitions_to_chunks(trajectory, config.action_chunk_size)
+                        if step % 100 == 0:
+                            print_green(f"📦 Episode结束，重组为action chunks (size={config.action_chunk_size})")
+                    # # else:
+                    #     # 所有actions已经是chunk格式（策略输出），仍需重组以处理最后几帧不满的情况
+                    #     trajectory = reorganize_transitions_to_chunks(trajectory, config.action_chunk_size)
+                    #     if step % 100 == 0:
+                    #         print_green(f"✅ 重组chunk trajectory，填充最后几帧")
+                
+                for transition in trajectory:
+                    data_store.insert(transition)
+                    transitions.append(copy.deepcopy(transition))
+                    if transition['intervened']:
+                        intvn_data_store.insert(transition)
+                        demo_transitions.append(copy.deepcopy(transition))
+
+                info["episode"]["intervention_count"] = intervention_count
+                info["episode"]["intervention_steps"] = intervention_steps
+                info["episode"]["succeed"] = int(info['succeed'])
+                info["episode"]["total_steps"] = step
+                
+                # 🎯 评估模式：只打印统计，不发送给 learner
+                if is_eval_mode:
+                    print_green(f"Episode {step}: return={running_return:.2f}, succeed={info['episode']['succeed']}")
+                else:
+                    # send stats to the learner to log
+                    stats = {"environment": info}
+                    client.request("send-stats", stats)
+                
+                pbar.set_description(f"last return: {running_return}")
+                running_return = 0.0
+                intervention_count = 0
+                intervention_steps = 0
+                already_intervened = False
+                
+                if not is_eval_mode:
+                    client.update()
+                
+                trajectory = []
+                obs, _ = env.reset()
+
+        if step > 0 and config.buffer_period > 0 and step % config.buffer_period == 0:
+            # dump to pickle file (transitions 已经在 episode 结束时重组过了)
+            buffer_path = os.path.join(FLAGS.checkpoint_path, "buffer")
+            demo_buffer_path = os.path.join(
+                FLAGS.checkpoint_path, "demo_buffer")
+            if not os.path.exists(buffer_path):
+                os.makedirs(buffer_path)
+            if not os.path.exists(demo_buffer_path):
+                os.makedirs(demo_buffer_path)
+            with open(os.path.join(buffer_path, f"transitions_{step}.pkl"), "wb") as f:
+                pkl.dump(transitions, f)
+                transitions = []
+            with open(
+                os.path.join(demo_buffer_path, f"transitions_{step}.pkl"), "wb"
+            ) as f:
+                pkl.dump(demo_transitions, f)
+                demo_transitions = []
+
+        timer.tock("total")
+
+        if step % config.log_period == 0 and not is_eval_mode:
+            stats = {"timer": timer.get_average_times()}
+            client.request("send-stats", stats)
+
+
+##############################################################################
+
+
+def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
+    """
+    The learner loop, which runs when "--learner" is set to True.
+    """
+    latest_ckpt = checkpoints.latest_checkpoint(FLAGS.checkpoint_path) if FLAGS.checkpoint_path and os.path.exists(FLAGS.checkpoint_path) else None
+    start_step = (
+        int(os.path.basename(latest_ckpt)[11:]) + 1
+        if latest_ckpt is not None
+        else 0
+    )
+    step = start_step
+    online_start_step = start_step
+
+    # 创建txt日志文件用于保存训练指标
+    log_file_path = None
+    if FLAGS.checkpoint_path:
+        log_dir = os.path.join(FLAGS.checkpoint_path, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(log_dir, f"training_metrics_{time.strftime('%Y%m%d_%H%M%S')}.txt")
+        print_green(f"Training metrics will be saved to: {log_file_path}")
+        # 写入文件头
+        with open(log_file_path, 'w') as f:
+            f.write(f"Training started at step {start_step}\n")
+            f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 80 + "\n\n")
+
+    def stats_callback(type: str, payload: dict) -> dict:
+        """Callback for when server receives stats request."""
+        assert type == "send-stats", f"Invalid request type: {type}"
+        if wandb_logger is not None:
+            wandb_logger.log(payload, step=step)
+        return {}  # not expecting a response
+
+    # Create server
+    server = TrainerServer(make_trainer_config(),
+                           request_callback=stats_callback)
+    server.register_data_store("actor_env", replay_buffer)
+    server.register_data_store("actor_env_intvn", demo_buffer)
+    server.start(threaded=True)
+
+    train_critic_networks_to_update = frozenset({"critic"})
+    train_actor_networks_to_update = frozenset({"actor"})
+    train_networks_to_update = frozenset({"critic", "actor"})
+
+    def create_batch_tasks(data_dict, batch_size):
+        batch_dict = {}
+        for key, value in data_dict.items():
+            if isinstance(value, dict):  # Handling nested dictionary (e.g., language_instruction)
+                batch_dict[key] = {k: np.tile(
+                    v, (batch_size, *([1] * (v.ndim - 1)))) for k, v in value.items()}
+            else:
+                # For non-dictionary values, repeat along batch dimension (axis=0)
+                batch_dict[key] = np.tile(
+                    value, (batch_size, *([1] * (value.ndim - 1))))  # Repeat along axis 0
+
+        return batch_dict
+
+    # Pretrain the model with the demo data
+    if step < FLAGS.pretrain_steps:
+        print_green("Pretraining the model with demo data")
+        for step in tqdm.tqdm(range(start_step, FLAGS.pretrain_steps + 1), desc="pretraining"):
+            for _ in range(config.cta_ratio - 1):
+                batch = next(demo_buffer.get_iterator(
+                    sample_args={"batch_size": config.batch_size,
+                                 "pack_obs": True, },
+                    device=sharding.replicate(),
+                ))
+
+                batch = {
+                    **batch,
+                    "tasks": create_batch_tasks(tasks, config.batch_size),
+                }
+                batch = frozen_dict.freeze(batch)
+                agent, critics_info = agent.update_calql(
+                    batch, networks_to_update=train_critic_networks_to_update,)
+
+            batch = next(demo_buffer.get_iterator(
+                sample_args={"batch_size": config.batch_size,
+                             "pack_obs": True, },
+                device=sharding.replicate(),
+            ))
+
+            batch = {
+                **batch,
+                "tasks": create_batch_tasks(tasks, config.batch_size),
+            }
+            batch = frozen_dict.freeze(batch)
+
+            agent, update_info = agent.update_calql(
+                batch, networks_to_update=train_networks_to_update,)
+
+            if step % config.log_period == 0 and wandb_logger:
+                wandb_logger.log(update_info, step=step)
+            
+            # 同时保存到txt文件（预训练阶段）
+            if step % config.log_period == 0 and log_file_path:
+                with open(log_file_path, 'a') as f:
+                    f.write(f"[Pretrain] Step {step}:\n")
+                    for key, value in sorted(update_info.items()):
+                        if isinstance(value, (int, float, np.number)):
+                            f.write(f"  {key}: {value:.6f}\n")
+                    f.write("\n")
+
+            if (step > 0 and config.checkpoint_period and step % config.checkpoint_period == 0):
+                checkpoints.save_checkpoint(
+                    FLAGS.checkpoint_path, agent.state, step=step, keep=100)
+
+        print_green("Pretraining done")
+        return  # after pretraining, return and exit
+    else:
+        print_green(
+            "Existing pretrained checkpoint model found. Skipping pretraining")
+
+    agent = jax.block_until_ready(agent)
+    server.publish_network(agent.state.params)
+
+    # Loop to wait until replay_buffer is filled
+    pbar = tqdm.tqdm(
+        total=config.training_starts,
+        initial=len(replay_buffer),
+        desc="Filling up replay buffer",
+        position=0,
+        leave=True,
+    )
+    while len(replay_buffer) < config.training_starts:
+        pbar.update(len(replay_buffer) - pbar.n)  # Update progress bar
+        time.sleep(1)
+    pbar.update(len(replay_buffer) - pbar.n)  # Update progress bar
+    pbar.close()
+
+    # send the initial network to the actor
+    server.publish_network(agent.state.params)
+    print_green("sent initial network to actor")
+
+    # 50/50 sampling from RLPD, half from demo and half from online experience
+    replay_iterator = replay_buffer.get_iterator(
+        sample_args={"batch_size": config.batch_size // 2, "pack_obs": True, },
+        device=sharding.replicate(),
+    )
+    demo_iterator = demo_buffer.get_iterator(
+        sample_args={"batch_size": config.batch_size // 2, "pack_obs": True, },
+        device=sharding.replicate(),
+    )
+
+    # wait till the replay buffer is filled with enough data
+    timer = Timer()
+
+    # Start online training after offline pretraining
+    online_start_step = FLAGS.pretrain_steps + \
+        1 if online_start_step < FLAGS.pretrain_steps else online_start_step
+    for step in tqdm.tqdm(range(online_start_step, config.max_steps), dynamic_ncols=True, desc="learner"):
+        # run n-1 critic updates and 1 critic + actor update.
+        # This makes training on GPU faster by reducing the large batch transfer time from CPU to GPU
+        for critic_step in range(config.cta_ratio - 1):
+            with timer.context("sample_replay_buffer"):
+                batch = next(replay_iterator)
+                demo_batch = next(demo_iterator)
+                batch = concat_batches(batch, demo_batch, axis=0)
+
+                batch = {
+                    **batch,
+                    "tasks": create_batch_tasks(tasks, config.batch_size),
+                }
+            batch = frozen_dict.freeze(batch)
+
+            with timer.context("train_critics"):
+                agent, critics_info = agent.update_ql(
+                    batch, networks_to_update=train_critic_networks_to_update,)
+
+        with timer.context("train"):
+            batch = next(replay_iterator)
+            demo_batch = next(demo_iterator)
+            batch = concat_batches(batch, demo_batch, axis=0)
+            batch = {
+                **batch,
+                "tasks": create_batch_tasks(tasks, config.batch_size),
+            }
+            # 🔍 Debug: 打印 batch action shape
+            if step % 100 == 0:
+                print_green(f"[Learner] Step {step}: batch['actions'] shape = {batch['actions'].shape}")
+            batch = frozen_dict.freeze(batch)
+            agent, update_info = agent.update_ql(
+                batch, networks_to_update=train_networks_to_update,)
+        # publish the updated network
+        if step > 0 and step % (config.steps_per_update) == 0:
+            agent = jax.block_until_ready(agent)
+            server.publish_network(agent.state.params)
+
+        if step % config.log_period == 0 and wandb_logger:
+            wandb_logger.log(update_info, step=step)
+            wandb_logger.log({"timer": timer.get_average_times()}, step=step)
+        
+        # 同时保存到txt文件（在线训练阶段）
+        if step % config.log_period == 0 and log_file_path:
+            with open(log_file_path, 'a') as f:
+                f.write(f"[Online] Step {step}:\n")
+                for key, value in sorted(update_info.items()):
+                    if isinstance(value, (int, float, np.number)):
+                        f.write(f"  {key}: {value:.6f}\n")
+                f.write("  Timer:\n")
+                for key, value in sorted(timer.get_average_times().items()):
+                    f.write(f"    {key}: {value:.6f}\n")
+                f.write("\n")
+
+        if (step > 0 and config.checkpoint_period and step % config.checkpoint_period == 0):
+            checkpoints.save_checkpoint(
+                FLAGS.checkpoint_path, agent.state, step=step, keep=100)
+
+
+##############################################################################
+
+
+def main(_):
+    global config
+    config = CONFIG_MAPPING[FLAGS.exp_name]()
+
+    assert config.batch_size % num_devices == 0
+    # seed
+    rng = jax.random.PRNGKey(FLAGS.seed)
+    rng, sampling_rng = jax.random.split(rng)
+
+    assert FLAGS.exp_name in CONFIG_MAPPING, "Experiment folder not found."
+    env = config.get_environment(
+        fake_env=FLAGS.learner, 
+        save_video=FLAGS.eval_checkpoint_step, 
+        classifier=False, 
+        stack_obs_num=2,
+        eval_mode=bool(FLAGS.eval_checkpoint_step))  # 🎯 评估模式：禁用干预和同步
+    env = RecordEpisodeStatistics(env)
+
+    FLAGS.reward_neg = config.reward_neg
+
+    rng, sampling_rng = jax.random.split(rng)
+
+    octo_model = OctoModel.load_pretrained(config.octo_path)
+    tasks = octo_model.create_tasks(texts=[config.task_desc])
+
+    # 🔧 从 demo 数据获取正确的 action 形状（支持 chunked actions）
+    sample_action = env.action_space.sample()
+    # if FLAGS.demo_path is not None and len(FLAGS.demo_path) > 0:
+    #     try:
+    #         with open(FLAGS.demo_path[0], "rb") as f:
+    #             demo_transitions = pkl.load(f)
+    #             if len(demo_transitions) > 0 and 'actions' in demo_transitions[0]:
+    #                 sample_action = demo_transitions[0]['actions']
+    #                 print_green(f"📊 使用 demo action 形状: {sample_action.shape}")
+    #     except Exception as e:
+    #         print_green(f"⚠️  无法加载 demo 数据，使用默认 action 形状: {e}")
+
+    if config.setup_mode == 'single-arm-fixed-gripper':
+        agent: ConrftCPOctoAgentSingleArm = make_conrft_octo_cp_pixel_agent_single_arm(
+            seed=FLAGS.seed,
+            sample_obs=env.observation_space.sample(),
+            sample_action=sample_action,
+            sample_tasks=tasks,
+            octo_model=octo_model,
+            image_keys=config.image_keys,
+            encoder_type=config.encoder_type,
+            discount=config.discount,
+            fix_gripper=True,
+            q_weight=FLAGS.q_weight,
+            bc_weight=FLAGS.bc_weight,
+        )
+        include_grasp_penalty = False
+        include_octo_embeddings = True
+        include_mc_returns = True
+    elif config.setup_mode == 'single-arm-learned-gripper':
+        agent: ConrftCPOctoAgentSingleArm = make_conrft_octo_cp_pixel_agent_single_arm(
+            seed=FLAGS.seed,
+            sample_obs=env.observation_space.sample(),
+            sample_action=sample_action,
+            sample_tasks=tasks,
+            octo_model=octo_model,
+            image_keys=config.image_keys,
+            encoder_type=config.encoder_type,
+            discount=config.discount,
+            q_weight=FLAGS.q_weight,
+            bc_weight=FLAGS.bc_weight,
+        )
+        include_grasp_penalty = True
+        include_octo_embeddings = True
+        include_mc_returns = True
+    else:
+        raise NotImplementedError(f"Unknown setup mode: {config.setup_mode}")
+
+    # replicate agent across devices
+    # need the jnp.array to avoid a bug where device_put doesn't recognize primitives
+    agent = jax.device_put(jax.tree_util.tree_map(
+        jnp.array, agent), sharding.replicate())
+
+    if FLAGS.checkpoint_path is not None and os.path.exists(FLAGS.checkpoint_path):
+        # 🎯 评估模式：加载指定的 checkpoint
+        if FLAGS.eval_checkpoint_step > 0:
+            ckpt = checkpoints.restore_checkpoint(
+                FLAGS.checkpoint_path, 
+                agent.state, 
+                step=FLAGS.eval_checkpoint_step)  # ✅ 加载指定步数
+            print_green(f"Loaded checkpoint at step {FLAGS.eval_checkpoint_step} for evaluation.")
+        else:
+            # 训练模式：加载最新的 checkpoint
+            latest_ckpt = checkpoints.latest_checkpoint(FLAGS.checkpoint_path)
+            if latest_ckpt is not None:
+                if not FLAGS.learner:
+                    input("Checkpoint path already exists. Press Enter to resume training.")
+                ckpt = checkpoints.restore_checkpoint(
+                    FLAGS.checkpoint_path, agent.state,)
+                ckpt_number = os.path.basename(latest_ckpt)[11:]
+                print_green(f"Loaded previous checkpoint at step {ckpt_number}.")
+            else:
+                ckpt = None
+        
+        # Update params only, ignore the optimizer states
+        if ckpt is not None:
+            new_params = ckpt.params
+            new_target_params = ckpt.target_params
+
+            agent = agent.replace(state=agent.state.replace(
+                params=new_params, target_params=new_target_params))
+
+    def create_replay_buffer_and_wandb_logger():
+        replay_buffer = MemoryEfficientReplayBufferDataStore(
+            env.observation_space,
+            env.action_space,
+            capacity=config.replay_buffer_capacity,
+            image_keys=config.image_keys,
+            include_grasp_penalty=include_grasp_penalty,
+            include_octo_embeddings=include_octo_embeddings,
+            include_mc_returns=include_mc_returns,
+        )
+        # set up wandb and logging
+
+        wandb_logger = make_wandb_logger(
+            project="conrft",
+            description=FLAGS.exp_name,
+            debug=FLAGS.debug,
+        )
+
+        return replay_buffer, wandb_logger
+
+    if FLAGS.learner:
+        sampling_rng = jax.device_put(
+            sampling_rng, device=sharding.replicate())
+        replay_buffer, wandb_logger = create_replay_buffer_and_wandb_logger()
+        demo_buffer = MemoryEfficientReplayBufferDataStore(
+            env.observation_space,
+            env.action_space,
+            capacity=config.replay_buffer_capacity,
+            image_keys=config.image_keys,
+            include_grasp_penalty=include_grasp_penalty,
+            include_octo_embeddings=include_octo_embeddings,
+            include_mc_returns=include_mc_returns,
+        )
+        assert FLAGS.demo_path is not None
+
+        for path in FLAGS.demo_path:
+            with open(path, "rb") as f:
+                transitions = pkl.load(f)
+                for transition in transitions:
+                    if 'infos' in transition and 'grasp_penalty' in transition['infos']:
+                        transition['grasp_penalty'] = transition['infos']['grasp_penalty']
+                    demo_buffer.insert(transition)
+        print_green(f"demo buffer size: {len(demo_buffer)}")
+        print_green(f"online buffer size: {len(replay_buffer)}")
+
+        if FLAGS.checkpoint_path is not None and os.path.exists(os.path.join(FLAGS.checkpoint_path, "buffer")):
+            for file in glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl")):
+                with open(file, "rb") as f:
+                    transitions = pkl.load(f)
+                    for transition in transitions:
+                        replay_buffer.insert(transition)
+            print_green(
+                f"Loaded previous buffer data. Replay buffer size: {len(replay_buffer)}")
+
+        if FLAGS.checkpoint_path is not None and os.path.exists(
+            os.path.join(FLAGS.checkpoint_path, "demo_buffer")
+        ):
+            for file in glob.glob(
+                os.path.join(FLAGS.checkpoint_path, "demo_buffer/*.pkl")
+            ):
+                with open(file, "rb") as f:
+                    transitions = pkl.load(f)
+                    for transition in transitions:
+                        demo_buffer.insert(transition)
+            print_green(
+                f"Loaded previous demo buffer data. Demo buffer size: {len(demo_buffer)}")
+
+        # learner loop
+        print_green("starting learner loop")
+        learner(sampling_rng,
+                tasks,
+                agent,
+                replay_buffer,
+                demo_buffer=demo_buffer,
+                wandb_logger=wandb_logger,
+                )
+
+    elif FLAGS.actor:
+        sampling_rng = jax.device_put(sampling_rng, sharding.replicate())
+        data_store = QueuedDataStore(50000)  # the queue size on the actor
+        intvn_data_store = QueuedDataStore(50000)
+
+        # actor loop
+        print_green("starting actor loop")
+        actor(tasks,
+              agent,
+              data_store,
+              intvn_data_store,
+              env,
+              sampling_rng,
+              )
+
+    else:
+        raise NotImplementedError("Must be either a learner or an actor")
+
+
+if __name__ == "__main__":
+    app.run(main)
