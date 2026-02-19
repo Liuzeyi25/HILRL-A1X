@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional
 import sys
 import traceback
 from pynput import keyboard
-
+from gello.agents.gello_follower import GelloFollower
 sigmoid = lambda x: 1 / (1 + np.exp(-x))
 
 
@@ -465,9 +465,57 @@ class SpacemouseIntervention(gym.ActionWrapper):
         if self.action_space.shape == (6,):
             self.gripper_enabled = False
 
+        self.action_space = gym.spaces.Box(
+            low=np.array([
+                -0.001, -0.001, -0.001,   # 前三维
+                -0.01, -0.05, -0.01,  # 第4-6维
+                -0.2                # 最后一维
+            ], dtype=np.float32),
+            high=np.array([
+                0.001,  0.001,  0.001,
+                0.01, 0.05, 0.01,
+                0.2
+            ], dtype=np.float32),
+            dtype=np.float32
+        )
+        
+        self.action_scale = env.action_scale
+
+
         self.expert = SpaceMouseExpert()
         self.left, self.right = False, False
         self.action_indices = action_indices
+        
+        # 🎯 手动奖励设置标志
+        self.manual_success_flag = False  # 是否手动标记成功
+        self.manual_failure_flag = False  # 是否手动标记失败
+        
+        # 启动键盘监听器
+        self.keyboard_listener = keyboard.Listener(on_press=self._on_key_press)
+        self.keyboard_listener.start()
+        print("=" * 60)
+        print("🎹 SpaceMouse 键盘监听已启用")
+        print("=" * 60)
+        print("   - 按 's' 键：标记当前 episode 为成功")
+        print("   - 按 'f' 键：标记当前 episode 为失败")
+        print("=" * 60)
+    
+    def _on_key_press(self, key):
+        """监听 's' 和 'f' 键"""
+        try:
+            if hasattr(key, 'char') and key.char is not None:
+                if key.char == 's' or key.char == 'S':
+                    self.manual_success_flag = True
+                    print("\n" + "=" * 60)
+                    print("✅ [SpaceMouse] 手动标记: 成功!")
+                    print("=" * 60)
+                elif key.char == 'f' or key.char == 'F':
+                    self.manual_failure_flag = True
+                    print("\n" + "=" * 60)
+                    print("❌ [SpaceMouse] 手动标记: 失败!")
+                    print("=" * 60)
+        except:
+            pass
 
     def action(self, action: np.ndarray) -> np.ndarray:
         """
@@ -481,15 +529,27 @@ class SpacemouseIntervention(gym.ActionWrapper):
         self.left, self.right = buttons[0], buttons[-1]
         intervened = False
         
-        if np.linalg.norm(expert_a) > 0.001:
+        # 🛡️ 分别检查位置和旋转的死区（避免小旋转被过滤）
+        pos_norm = np.linalg.norm(expert_a[:3])  # 位置死区
+        rot_norm = np.linalg.norm(expert_a[3:6])  # 旋转死区
+        
+        # 只要位置或旋转有一个超过阈值就认为有干预
+        if pos_norm > 0.001 or rot_norm > 0.001:  # 旋转阈值更小 (0.005 rad ≈ 0.3°)
             intervened = True
+        else:
+            # 🔍 定期打印死区内的 SpaceMouse 读数（诊断漂移）
+            if not hasattr(self, '_deadband_count'):
+                self._deadband_count = 0
+            self._deadband_count += 1
+            if self._deadband_count % 100 == 1:
+                print(f"🛡️ [SpaceMouse] 死区过滤: pos_norm={pos_norm:.6f}, rot_norm={rot_norm:.6f}, expert_a={expert_a}")
 
         if self.gripper_enabled:
             if self.left:  # close gripper
-                gripper_action = np.random.uniform(-1, -0.9, size=(1,))
+                gripper_action = np.random.uniform(-0.2, -0.15, size=(1,))
                 intervened = True
             elif self.right:  # open gripper
-                gripper_action = np.random.uniform(0.9, 1, size=(1,))
+                gripper_action = np.random.uniform(0.15, 0.2, size=(1,))
                 intervened = True
             else:
                 gripper_action = np.zeros((1,))
@@ -502,6 +562,10 @@ class SpacemouseIntervention(gym.ActionWrapper):
             expert_a = filtered_expert_a
 
         if intervened:
+            # 🔧 裁剪到动作空间范围内
+            expert_a = np.clip(expert_a, self.action_space.low, self.action_space.high)
+            expert_a = expert_a * self.action_scale
+            # print("[SpaceMouse] Intervention detected: using expert action,", expert_a)
             return expert_a, True
 
         return action, False
@@ -512,10 +576,43 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         info["left"] = self.left
         info["right"] = self.right
+        
+        # 🎯 检查手动成功标志
+        if self.manual_success_flag:
+            rew = 1.0
+            done = True
+            info['succeed'] = True
+            info['manual_reward'] = True
+            self.manual_success_flag = False
+            print(f"✅ [SpaceMouse] 已应用: reward={rew}, succeed=True")
+        
+        # 🎯 检查手动失败标志
+        elif self.manual_failure_flag:
+            rew = -1.0
+            done = True
+            info['succeed'] = False
+            info['manual_failure'] = True
+            self.manual_failure_flag = False
+            print(f"❌ [SpaceMouse] 已应用: reward={rew}, succeed=False")
+        
         return obs, rew, done, truncated, info
+    
+    def reset(self, **kwargs):
+        """Reset 时清除手动标记"""
+        self.manual_success_flag = False
+        self.manual_failure_flag = False
+        return self.env.reset(**kwargs)
+    
+    def close(self):
+        """关闭键盘监听器和 SpaceMouse"""
+        if hasattr(self, 'keyboard_listener'):
+            self.keyboard_listener.stop()
+        if hasattr(self, 'expert'):
+            self.expert.close()
+        return self.env.close()
 
 
 # [新增] Rate 类：用于精确控制频率
@@ -747,7 +844,7 @@ class GelloIntervention(gym.ActionWrapper):
         self.gello_follower = None
         if self.enable_follower:
             try:
-                from gello.agents.gello_follower import GelloFollower
+                
                 
                 # 获取底层 DynamixelRobot
                 dynamixel_robot = None
@@ -937,6 +1034,9 @@ class GelloIntervention(gym.ActionWrapper):
            #     t2 = time.time()
                 
                 if target_a1x is not None:
+                    # 🔒 固定夹爪位置：无论 Gello 如何移动，都固定在 1.5mm
+                    target_a1x[-1] = 1.5
+                    
                     # 3. 发送命令到机器人
                     if robot is not None:
                         robot.command_joint_state(target_a1x, from_gello=False)
@@ -1368,6 +1468,39 @@ class GelloIntervention(gym.ActionWrapper):
         # if self.fast_intervention_mode and self.intervention_enabled and not self.threaded_control:
         #     return self._fast_intervention_step(action)
         
+        # ==================== 🛡️ 非干预模式：完全静止 ====================
+        # 如果干预未启用，不执行任何动作，保持静止
+        if not self.intervention_enabled:
+            # 不调用 env.step()，避免零动作导致的IK求解和微小漂移
+            # 只返回上一次的观测
+            obs = self.last_obs if self.last_obs is not None else self.env.reset()[0]
+            rew = 0.0
+            done = False
+            truncated = False
+            
+            # 检查手动标记
+            if self.manual_success_flag:
+                rew = 1.0
+                self.manual_success_flag = False
+                done = True
+                manual_succeed = True
+                print(f"✅ 手动奖励已应用: reward={rew}, succeed=True")
+            elif self.manual_failure_flag:
+                rew = -1.0
+                self.manual_failure_flag = False
+                done = True
+                manual_succeed = False
+                print(f"❌ 手动奖励已应用: reward={rew}, succeed=False")
+            else:
+                manual_succeed = None
+            
+            info = {
+                "gello_intervened": False,
+                "intervention_disabled": True,
+                "succeed": rew > 0 if manual_succeed is None else manual_succeed,
+            }
+            return obs, rew, done, truncated, info
+        
         # ==================== 原始干预模式 ====================
         # Process action through intervention logic
         gello_joints, intervened = self.action(action)     
@@ -1718,7 +1851,7 @@ class GelloIntervention(gym.ActionWrapper):
         4. 自动关闭干预（需要手动按空格重新启用）
         """
         import time
-        
+        self._start_following()
         # � 方案B不需要在线buffer管理
         
         # 🔧 标记 reset 开始（暂停后台线程的控制）
@@ -1737,13 +1870,13 @@ class GelloIntervention(gym.ActionWrapper):
         print("="*60)
         
         # 强制停止任何可能残留的 following 模式
-        try:
-            if self.gello_follower is not None:
-                self.gello_follower.stop()
-                print("🛑 强制停止 Gello following 模式（清理残留状态）")
-                time.sleep(0.3)  # 等待模式切换完成
-        except Exception as e:
-            print(f"⚠️  停止 following 模式时出错（忽略）: {e}")
+        # try:
+        #     if self.gello_follower is not None:
+        #         self.gello_follower.stop()
+        #         print("🛑 强制停止 Gello following 模式（清理残留状态）")
+        #         time.sleep(0.3)  # 等待模式切换完成
+        # except Exception as e:
+        #     print(f"⚠️  停止 following 模式时出错（忽略）: {e}")
         
         # 🔍 读取 Gello 当前位置（reset 前）
         gello_before_reset = self._get_current_gello_joints()
@@ -1879,7 +2012,7 @@ class GelloIntervention(gym.ActionWrapper):
             
             # 🔧 关键修复：在停止 following 之前，持续发送目标位置更长时间
             # 确保电机真正到位并稳定
-            print("⏳ 持续保持目标位置 1.5 秒...")
+            print("⏳ 持续保持目标位置 0.5 秒...")
             if self.gello_follower is not None:
                 for _ in range(10):  # 30次 * 0.05秒 = 1.5秒
                     self.gello_follower.command_follow(gello_target)
@@ -2064,15 +2197,15 @@ class GelloIntervention(gym.ActionWrapper):
             if max_diff < 0.2:
                 duration = 0.1
             elif max_diff < 0.5:
-                duration = 0.3
+                duration = 0.1
             elif max_diff < 1.5:
                 duration = 0.5
             else:
-                duration = 0.8
+                duration = 0.6
             
             # High control rate for smooth motion
             control_rate = 30 # Hz
-            num_steps = max(int(duration * control_rate), 10)
+            num_steps = max(int(duration * control_rate), 3)
             dt = duration / num_steps
             
             # Pre-compute delta
@@ -2088,7 +2221,7 @@ class GelloIntervention(gym.ActionWrapper):
                 actual_pos = self._get_current_gello_joints()
                 print(f"[DEBUG] step {step:3d}/{num_steps:3d} | 当前: [{', '.join(f'{v:.3f}' for v in (actual_pos if actual_pos is not None else np.zeros_like(intermediate_pos)))}] | 目标: [{', '.join(f'{v:.3f}' for v in target_gello_joints)}]")
                # time.sleep(0.00001)
-            self._set_gello_joints(target_gello_joints, duration=0.2)###发送持续最终位置0.5s
+            #self._set_gello_joints(target_gello_joints, duration=0.2)###发送持续最终位置0.5s
             
         except Exception as e:
             print(f"⚠️  平滑移动失败: {e}")
@@ -2189,7 +2322,7 @@ class GelloIntervention(gym.ActionWrapper):
             return None
     
     def _set_gello_joints(self, joint_positions: np.ndarray,
-                          duration: float = 0.0, rate_hz: float = 50.0):
+                          duration: float = 0.0, rate_hz: float = 20.0):
         """
         🔧 恢复：Set Gello joint positions (follower mode)
         

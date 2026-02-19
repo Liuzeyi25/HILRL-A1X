@@ -78,7 +78,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.01531, 1.8255, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
+    RESET_JOINT_STATE = np.array([-0.01531, 1.82555, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
     
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
@@ -87,8 +87,8 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    # ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 10.0])
-    ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
+    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
     # 基于 A1_X 的实际关节限制
@@ -130,12 +130,12 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Pick banana and place on the plate"
+    task_desc = "Pick up the banana"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/luka/Haoyuan/Safevla_RL/octo_model/octo-small-1.5"
     octo_path = "hf://rail-berkeley/octo-small-1.5"
-    teleoperation_device = "gello"  # "gello", "spacemouse", or None
+    teleoperation_device = "spacemouse"  # "gello", "spacemouse", or None
     
     # 🆕 新版 GelloIntervention 配置（基于 launch_yaml.py）
     gello_config_path = "/home/luka/Haoyuan/Safevla_RL/Gello/gello_software/configs/yam_A1_X.yaml"  # YAML 配置文件路径
@@ -170,11 +170,12 @@ class TrainConfig(DefaultTrainingConfig):
                 # 🆕 新版：使用 YAML 配置文件（基于 launch_yaml.py 架构）
                 # 🎯 根据模式选择同步策略
                 if data_collection_mode:
-                    # 数据采集模式：Reset时同步，按空格不同步
+                    # 数据采集模式：Reset时同步 + 按空格也同步
+                    # 因为数据采集时会多次按空格切换干预状态
                     enable_follower_val = True
-                    sync_on_reset_val = True
-                    sync_on_intervention_val = False
-                    print("🎯 Gello 同步模式：数据采集（Reset时同步）")
+                    sync_on_reset_val = False # 🔧 修复：Reset时同步
+                    sync_on_intervention_val = True  # 🔧 修复：数据采集也要按空格同步
+                    print("🎯 Gello 同步模式：数据采集（Reset + 空格键都同步）")
                 else:
                     # 在线训练模式：初始化follower，Reset不同步，按空格时同步
                     enable_follower_val = True

@@ -142,6 +142,10 @@ class A1XRobotZMQNode(Node):
         self._current_pos = None  # [x, y, z]
         self._current_rot = None  # [qx, qy, qz, qw] quaternion
         
+        # 🔧 时间戳：追踪关节和EE位姿的更新时间，用于检测时间不对齐
+        self._joint_state_timestamp = 0.0  # 关节状态最后更新时间 (time.time())
+        self._ee_pose_timestamp = 0.0      # EE位姿最后更新时间 (time.time())
+        
         self._lock = threading.Lock()
         
         # FK solver
@@ -178,6 +182,7 @@ class A1XRobotZMQNode(Node):
     def joint_state_callback(self, msg: JointState):
         """Callback for receiving joint state updates."""
         with self._lock:
+            self._joint_state_timestamp = time.time()
             self._joint_names = list(msg.name)
             self._current_joint_positions = list(msg.position)
             
@@ -209,6 +214,7 @@ class A1XRobotZMQNode(Node):
     def pose_ee_callback(self, msg: PoseStamped):
         """Callback for receiving end-effector pose updates."""
         with self._lock:
+            self._ee_pose_timestamp = time.time()
             # Extract position (x, y, z)
             self._current_pos = np.array([
                 msg.pose.position.x,
@@ -413,6 +419,9 @@ class A1XRobotZMQNode(Node):
                                 "torques": self._current_joint_torques,
                                 "ee_pos": self._current_pos.tolist() if self._current_pos is not None else [0, 0, 0],
                                 "ee_quat": self._current_rot.tolist() if self._current_rot is not None else [0, 0, 0, 1],
+                                "joint_ts": self._joint_state_timestamp,
+                                "ee_ts": self._ee_pose_timestamp,
+                                "server_ts": time.time(),
                             }
                         self.state_socket.send_json(response)
                     
@@ -530,6 +539,14 @@ class A1XRobotZMQNode(Node):
                 f"Safety stop: FK Z position {fk_result['position']['z']:.3f} m "
                 f"below limit {self.SAFE_Z_MIN:.3f} m"
             )
+            # Publish gripper command separately - Float32 with range 0-100mm
+            if gripper_position is not None:
+                # haoyuan print - 🚀 高频循环中禁用
+                # print(gripper_position)
+                gripper_msg = Float32()
+                gripper_msg.data = float(gripper_position)
+                self.gripper_command_pub.publish(gripper_msg)
+            
             return None
         
         # Publish arm joint command
@@ -544,7 +561,7 @@ class A1XRobotZMQNode(Node):
                 msg.name = [f"joint_{i+1}" for i in range(len(arm_positions))]
         
         msg.position = arm_positions
-        msg.velocity = [2.0] * len(arm_positions)  # 恒定速度
+        msg.velocity = [1.0] * len(arm_positions)  # 恒定速度
         msg.effort = []
         # 🚀 高频循环中禁用 print，避免阻塞！
         # print(f"Publishing joint command: positions={arm_positions}, gripper={gripper_position}")

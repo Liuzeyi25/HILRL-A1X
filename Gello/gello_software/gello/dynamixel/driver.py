@@ -166,6 +166,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         baudrate: int = 57600,
         max_retries: int = 3,
         use_fake_fallback: bool = True,
+        
     ):
         """Initialize the DynamixelDriver class.
 
@@ -188,7 +189,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._is_fake = False
         self._torque_enabled = False
         self._stop_thread = Event()
-
+  
         # Optional torque-current mapping
         self._servo_types = list(servo_types) if servo_types is not None else None
         if self._servo_types is not None:
@@ -324,7 +325,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
                     )
                     
                     if dxl_comm_result != COMM_SUCCESS:
-                        raise RuntimeError(f"Failed to set joint angle for Dynamixel with ID {dxl_id}")
+                        raise RuntimeError(f"23333Failed to set joint angle for Dynamixel with ID {dxl_id}")
                     if dxl_error != 0:
                         raise RuntimeError(f"Servo error for Dynamixel with ID {dxl_id}")
             return
@@ -468,52 +469,97 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._reading_thread = Thread(target=self._read_joint_states)
         self._reading_thread.daemon = True
         self._reading_thread.start()
-
+        
     def _read_joint_states(self):
-        # Continuously read joint angles and velocities
         while not self._stop_thread.is_set():
             time.sleep(0.001)
+
             with self._lock:
                 _joint_angles = np.zeros(len(self._ids), dtype=int)
                 _velocities = np.zeros(len(self._ids), dtype=int)
+
                 dxl_comm_result = self._groupSyncRead.txRxPacket()
                 if dxl_comm_result != COMM_SUCCESS:
                     print(f"warning, comm failed: {dxl_comm_result}")
                     continue
+
                 for i, dxl_id in enumerate(self._ids):
-                    # velocity
+                    # velocity (addr 128, len 4)
                     if self._groupSyncRead.isAvailable(
                         dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
                     ):
-                        velocity = self._groupSyncRead.getData(
+                        v = self._groupSyncRead.getData(
                             dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
                         )
-                        # sign correction for 32-bit two's complement
-                        if velocity > 0x7FFFFFFF:
-                            velocity -= 0x100000000
-                        _velocities[i] = velocity
+                        if v > 0x7FFFFFFF:
+                            v -= 0x100000000
+                        _velocities[i] = v
                     else:
-                        raise RuntimeError(
-                            f"Failed to get velocity for Dynamixel with ID {dxl_id}"
-                        )
-                    # position
+                        print(f"[warn] velocity not available for ID {dxl_id}")
+                        continue
+
+                    # position (addr 132, len 4) —— 注意：虽然GroupSyncRead从128开始读，但这里读132是OK的
                     if self._groupSyncRead.isAvailable(
                         dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                     ):
-                        angle = self._groupSyncRead.getData(
+                        p = self._groupSyncRead.getData(
                             dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                         )
-                        # sign correction for 32-bit two's complement
-                        if angle > 0x7FFFFFFF:
-                            angle -= 0x100000000
-                        _joint_angles[i] = angle
+                        if p > 0x7FFFFFFF:
+                            p -= 0x100000000
+                        _joint_angles[i] = p
                     else:
-                        raise RuntimeError(
-                            f"Failed to get joint angles for Dynamixel with ID {dxl_id}"
-                        )
+                        print(f"[warn] position not available for ID {dxl_id}")
+                        continue
+
                 self._joint_angles = _joint_angles
                 self._velocities = _velocities
-            # self._groupSyncRead.clearParam()
+
+    # def _read_joint_states(self):
+    #     # Continuously read joint angles and velocities
+    #     while not self._stop_thread.is_set():
+    #         time.sleep(0.001)
+    #         with self._lock:
+    #             _joint_angles = np.zeros(len(self._ids), dtype=int)
+    #             _velocities = np.zeros(len(self._ids), dtype=int)
+    #             dxl_comm_result = self._groupSyncRead.txRxPacket()
+    #             if dxl_comm_result != COMM_SUCCESS:
+    #                 print(f"warning, comm failed: {dxl_comm_result}")
+    #                 continue
+    #             for i, dxl_id in enumerate(self._ids):
+    #                 # velocity
+    #                 if self._groupSyncRead.isAvailable(
+    #                     dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
+    #                 ):
+    #                     velocity = self._groupSyncRead.getData(
+    #                         dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
+    #                     )
+    #                     # sign correction for 32-bit two's complement
+    #                     if velocity > 0x7FFFFFFF:
+    #                         velocity -= 0x100000000
+    #                     _velocities[i] = velocity
+    #                 else:
+    #                     raise RuntimeError(
+    #                         f"Failed to get velocity for Dynamixel with ID {dxl_id}"
+    #                     )
+    #                 # position
+    #                 if self._groupSyncRead.isAvailable(
+    #                     dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+    #                 ):
+    #                     angle = self._groupSyncRead.getData(
+    #                         dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+    #                     )
+    #                     # sign correction for 32-bit two's complement
+    #                     if angle > 0x7FFFFFFF:
+    #                         angle -= 0x100000000
+    #                     _joint_angles[i] = angle
+    #                 else:
+    #                     raise RuntimeError(
+    #                         f"Failed to get joint angles for Dynamixel with ID {dxl_id}"
+    #                     )
+    #             self._joint_angles = _joint_angles
+    #             self._velocities = _velocities
+    #         # self._groupSyncRead.clearParam()
 
     def get_positions_and_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
         if self._is_fake:

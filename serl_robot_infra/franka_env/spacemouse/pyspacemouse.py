@@ -432,7 +432,7 @@ device_specs = {
     "SpaceMouse Compact": DeviceSpec(
         name="SpaceMouse Compact",
         # vendor ID and product ID
-        hid_id=[0x256F, 0xC635],
+        hid_id=[0x256F, 0xC635],  #256f:c635
         # LED HID usage code pair
         led_id=[0x8, 0x4B],
         mappings={

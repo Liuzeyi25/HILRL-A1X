@@ -11,9 +11,13 @@
 # /1/25 
 ## 初始启动
 1. a1x通电
-2. 根目录下
+根目录下
 ```bash
 ./a1_x_joint.bash
+```
+2. rostopic话题
+```bash
+ros2 topic echo /hdas/pose_ee_arm
 ```
 3. gello跟随模式
 ```bash
@@ -21,23 +25,83 @@
 ➜  gello_software git:(main) ✗ source .venv/bin/activate
 (gello_software) ➜  gello_software git:(main) ✗ python experiments/launch_yaml.py --left-config-path configs/yam_A1_X.yaml
 ```
-4. 夹香蕉采数据
+1. 夹香蕉采数据
 ```bash
 cd /home/dungeon_master/conrft
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name a1x_pick_banana \
-     --successes_needed 15 \
-     --demo_data_subdir 20260210
+     --successes_needed 30 \
+     --demo_data_subdir 20260216
+
+python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
+     --exp_name insert_block \
+     --successes_needed 1  \
+     --demo_data_subdir 20260213
+
+python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
+     --exp_name insert_network_cable \
+     --successes_needed 2  \
+     --demo_data_subdir 20260218
+
+python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
+     --exp_name fold_towel \
+     --successes_needed 2  \
+     --demo_data_subdir 20260218
+```
+2. 检查数据
+
+```bash
+python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260216/traj_002_2026-02-16_15-40-13.pkl \
+  --exp_name=a   \
+  --detailed 
+
+
 
 ```
+
+
+3.在线训练
+actor启动 
+
+
+```bash
+ conda activate conrft
+cd /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana  ###进入对应任务的目录下
+bash run_actor_conrft.sh
+
+```
+learner启动
+远程连接193.193.193.201
+```bash
+ conda activate conrft
+cd /home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana  ###进入对应任务的目录下
+xvfb-run -a bash run_learner_conrft.sh
+```
+在run_learner_conrft.sh
+```python
+
+python ../../train_conrft_octo.py "$@" \
+    --exp_name=a1x_pick_banana \             ##改为训练任务名
+    --checkpoint_path=/mnt/data/Haoyuan/0212/  \    ##改为预训练的checkpoint
+    --q_weight=1.0 \
+    --bc_weight=0.1 \
+    --demo_path=./demo_data/a1x_pick_banana_36_demos.pkl \ ###改预训练时用的pkl
+    --pretrain_steps=100000 \     ####和所用预训练的checkpoint步数对齐
+    --debug=False \
+    --learner
+
+```
+
+
 ```bash
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 ```
 采集脚本时需要使用上述命令
 [ ] 加入环境激活中(未完成)
 
-
+5. 
 
 
 ## 一些变量的定位
@@ -328,3 +392,28 @@ chunking.py
         except Exception as e:
             print_green(f"⚠️  无法加载 demo 数据，使用默认 action 形状: {e}")
 ```
+
+### 固定夹爪逻辑
+a1x_env.py `def interpolate_move(）`
+
+1. 零动作检测
+a1x_env.py  `step()`里面
+2. 固定rxryrz
+a1x_env.py 
+```python
+     self.reset_ee_rotation = self.curr_ee_pos_rot_gripper[3:6].copy()
+        print(f"🔒 Reset时保存末端姿态 (rx, ry, rz): {np.rad2deg(self.reset_ee_rotation)} degrees")
+        print(f"   后续step将保持该姿态不变（所有旋转delta强制为0）")
+
+###############################
+
+            # 🔒 固定旋转：将旋转delta设置为0，保持当前姿态不变
+    scaled_action = scaled_action.copy()
+    scaled_action[3:6] = 0.0  # 强制 drx, dry, drz = 0
+``` 
+
+
+  Host 6000pro
+    HostName 10.97.216.208
+    User e230112
+    Port 34802

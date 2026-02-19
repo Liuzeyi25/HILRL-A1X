@@ -62,27 +62,59 @@ class GelloFollower:
         current_pos = self.gello.get_joint_state()
         print(f"[GelloFollower] Current Gello position: {current_pos}")
         
-        # Check if already in position control mode
-        try:
-            current_mode = self.driver.verify_operating_mode(POSITION_CONTROL_MODE)
-            print("[GelloFollower] Already in position control mode, skipping mode change")
-            # Just ensure torque is on
-            self.driver.set_torque_mode(True)
-            time.sleep(0.5)
-        except:
-            # Need to switch modes
-            print("[GelloFollower] Switching from current control to position control...")
-            
-            # Switch to position control mode
-            self.driver.set_torque_mode(False)  # Must disable torque first
-            time.sleep(0.2)
-            
-            self.driver.set_operating_mode(POSITION_CONTROL_MODE)  # Mode 3
-            time.sleep(0.3)
-            
-            # Enable torque
-            self.driver.set_torque_mode(True)
-            time.sleep(0.5)
+        # 🔧 多次重试，增加等待时间避免读取线程冲突
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Check if already in position control mode
+                try:
+                    self.driver.verify_operating_mode(POSITION_CONTROL_MODE)
+                    print("[GelloFollower] Already in position control mode, skipping mode change")
+                    # Just ensure torque is on
+                    try:
+                        self.driver.set_torque_mode(True)
+                        time.sleep(0.6)  # 增加等待时间
+                    except Exception as e:
+                        print(f"[GelloFollower] ⚠️  Failed to enable torque, retrying: {e}")
+                        raise  # 触发重试
+                    break  # Success
+                    
+                except:
+                    # Need to switch modes
+                    print(f"[GelloFollower] Switching from current control to position control (attempt {attempt + 1}/{max_retries})...")
+                    
+                    # 🔧 关键改进：增加所有步骤的等待时间，避免读取线程访问不完整数据
+                    try:
+                        # Step 1: Disable torque
+                        self.driver.set_torque_mode(False)
+                        time.sleep(0.8)  # 🔧 增加到 0.8s，让读取线程充分稳定
+                        
+                        # Step 2: Change operating mode
+                        self.driver.set_operating_mode(POSITION_CONTROL_MODE)
+                        time.sleep(0.8)  # 🔧 增加到 0.8s，模式切换需要时间
+                        
+                        # Step 3: Enable torque
+                        self.driver.set_torque_mode(True)
+                        time.sleep(0.8)  # 🔧 增加到 0.8s，torque 启用需要时间
+                        
+                        # Step 4: Verify success
+                        self.driver.verify_operating_mode(POSITION_CONTROL_MODE)
+                        print("[GelloFollower] ✅ Successfully switched to position control mode")
+                        break  # Success
+                        
+                    except Exception as inner_e:
+                        print(f"[GelloFollower] ⚠️  Inner exception during mode switch: {inner_e}")
+                        raise  # 触发外层重试
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[GelloFollower] ⚠️  Mode switch failed (attempt {attempt + 1}/{max_retries}), retrying after delay...")
+                    print(f"   Error: {e}")
+                    time.sleep(1.0)  # 🔧 失败后等待更长时间再重试
+                else:
+                    print(f"[GelloFollower] ❌ Failed to switch mode after {max_retries} attempts")
+                    print(f"   Final error: {e}")
+                    raise
         
         self.is_following = True
         print("[GelloFollower] Position control enabled. Gello will follow commands.")
