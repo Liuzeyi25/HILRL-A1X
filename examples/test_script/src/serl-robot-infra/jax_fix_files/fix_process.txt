@@ -1,8 +1,0 @@
-1.  根本原因: JAX 0.6.1 + jax-cuda12-plugin 0.4.35 版本不兼容
-    系统环境: 有 NVIDIA GPU 和 CUDA 12.8 驱动，但 CUDA Toolkit 环境变量未设置
-    PJRT API 版本冲突: 插件版本 0.55 与框架版本 0.51 不匹配
-2.  1. 修复 CUDA 环境
-    2. JAX 版本降级 (0.4.27)
-    3. 强制 CPU 模式 (后面需要解决) 
-        完全跳过有问题的 CUDA 初始化
-        避免了 PJRT API 版本冲突

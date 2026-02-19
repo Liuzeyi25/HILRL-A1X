@@ -1,2 +1,0 @@
-夹爪数据获取在/home/dungeon_master/conrft/serl_robot_infra/franka_env/robots/a1x_ros2_node.py
-joint_state_callback()
