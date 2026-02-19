@@ -5,22 +5,31 @@
 
 用法:
 python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
-  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260209/a1x_pick_banana_18_demos.pkl \
-  --exp_name=a1x_pick_banana \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260216/traj_003_2026-02-16_15-56-50.pkl \
+  --show_first_frame \
   --detailed  # 可选: 显示详细的递归结构分析
 """
 
 import pickle as pkl
 import numpy as np
-import jax.numpy as jnp
+
 from pathlib import Path
 import sys
+import cv2
+import os
+import matplotlib.pyplot as plt
 from absl import app, flags
+
+# 配置 matplotlib 中文字体支持
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'SimHei', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 FLAGS = flags.FLAGS
 flags.DEFINE_multi_string("demo_path", None, "Path to the demo data.")
 flags.DEFINE_string("exp_name", None, "Name of experiment.")
 flags.DEFINE_bool("detailed", False, "Show detailed recursive structure analysis.")
+flags.DEFINE_bool("save_first_frame", False, "Save first frame images to disk.")
+flags.DEFINE_bool("show_first_frame", False, "Display first frame images.")
 
 def print_section(title):
     """打印分隔线和标题"""
@@ -307,6 +316,187 @@ def analyze_trajectory_structure(demo_paths):
                         break
             else:
                 print(f"   ❌ '{extra_key}': 不存在")
+
+def show_first_frame_images(demo_paths):
+    """直接显示第一帧和第二帧图像"""
+    print_section("显示第一帧和第二帧图像")
+    
+    for path in demo_paths:
+        print(f"\n📁 处理文件: {path}")
+        with open(path, "rb") as f:
+            transitions = pkl.load(f)
+        
+        if len(transitions) == 0:
+            print("   ⚠️ 文件为空")
+            continue
+        
+        if len(transitions) < 2:
+            print(f"   ⚠️ 只有 {len(transitions)} 帧，无法显示第二帧")
+            frames_to_show = [0]
+        else:
+            frames_to_show = [0, 1]
+        
+        # 查找图像键（从第一帧）
+        if 'observations' not in transitions[0]:
+            print("   ⚠️ 第一帧没有 observations")
+            continue
+        
+        obs_first = transitions[0]['observations']
+        
+        # 🔍 调试：打印 observations 的所有键和类型
+        print(f"   🔍 第一帧 observations 的键: {list(obs_first.keys())}")
+        for key, value in obs_first.items():
+            if isinstance(value, np.ndarray):
+                print(f"      - {key}: ndarray, shape={value.shape}, dtype={value.dtype}")
+            else:
+                print(f"      - {key}: {type(value).__name__}")
+        
+        image_keys = []
+        for key in obs_first.keys():
+            value = obs_first[key]
+            if isinstance(value, np.ndarray) and value.ndim == 3:
+                image_keys.append(key)
+            elif isinstance(value, np.ndarray) and value.ndim == 4:
+                # 可能是 [batch, H, W, C] 格式，取第一个
+                print(f"      ⚠️ {key} 是4维数组 {value.shape}，尝试取第一个元素")
+                image_keys.append(key)
+        
+        if len(image_keys) == 0:
+            print("   ⚠️ 第一帧没有图像数据（没有3维或4维的 ndarray）")
+            continue
+        
+        # 显示每个相机的图像
+        file_basename = Path(path).stem
+        num_images = len(image_keys)
+        num_frames = len(frames_to_show)
+        
+        # 创建子图: 行=帧数, 列=相机数
+        fig, axes = plt.subplots(num_frames, num_images, 
+                                 figsize=(6*num_images, 6*num_frames))
+        
+        # 确保 axes 是 2D 数组
+        if num_frames == 1 and num_images == 1:
+            axes = np.array([[axes]])
+        elif num_frames == 1:
+            axes = axes.reshape(1, -1)
+        elif num_images == 1:
+            axes = axes.reshape(-1, 1)
+        
+        for frame_idx, frame_num in enumerate(frames_to_show):
+            frame = transitions[frame_num]
+            obs = frame['observations']
+            
+            print(f"\n   📸 第 {frame_num+1} 帧:")
+            
+            for img_idx, img_key in enumerate(image_keys):
+                if img_key not in obs:
+                    print(f"      ⚠️ {img_key} 不存在于第 {frame_num+1} 帧")
+                    continue
+                
+                img = obs[img_key]
+                
+                # 处理4维数组 (batch维度)
+                if img.ndim == 4:
+                    print(f"      📷 {img_key} (4D, 取第一个):")
+                    print(f"         原始形状: {img.shape}")
+                    img = img[0]  # 取第一个batch
+                    print(f"         处理后形状: {img.shape}")
+                else:
+                    print(f"      📷 {img_key}:")
+                    print(f"         形状: {img.shape}, dtype: {img.dtype}")
+                
+                print(f"         范围: [{img.min()}, {img.max()}]")
+                
+                # 显示图像 (假设是 RGB 格式)
+                axes[frame_idx, img_idx].imshow(img)
+                axes[frame_idx, img_idx].set_title(
+                    f"Frame {frame_num+1} - {img_key}\n{img.shape}"
+                )
+                axes[frame_idx, img_idx].axis('off')
+        
+        plt.suptitle(f"Frame 1 & 2 Comparison - {file_basename}", fontsize=14, y=0.98)
+        plt.tight_layout()
+        plt.show()
+        
+        print(f"\n   ✅ 已显示 {num_frames} 帧 × {num_images} 相机 = {num_frames*num_images} 张图像")
+
+
+def save_first_frame_images(demo_paths, output_dir="./first_frame_images"):
+    """保存第一帧图像到磁盘"""
+    print_section("保存第一帧图像")
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for path in demo_paths:
+        print(f"\n📁 处理文件: {path}")
+        with open(path, "rb") as f:
+            transitions = pkl.load(f)
+        
+        if len(transitions) == 0:
+            print("   ⚠️ 文件为空")
+            continue
+        
+        first_frame = transitions[0]
+        
+        if 'observations' not in first_frame:
+            print("   ⚠️ 第一帧没有 observations")
+            continue
+        
+        obs = first_frame['observations']
+        
+        # 🔍 调试：打印 observations 的所有键和类型
+        print(f"   🔍 observations 的键: {list(obs.keys())}")
+        for key, value in obs.items():
+            if isinstance(value, np.ndarray):
+                print(f"      - {key}: ndarray, shape={value.shape}, dtype={value.dtype}")
+            else:
+                print(f"      - {key}: {type(value).__name__}")
+        
+        # 查找图像键
+        image_keys = []
+        for key in obs.keys():
+            value = obs[key]
+            if isinstance(value, np.ndarray) and value.ndim == 3:
+                image_keys.append(key)
+            elif isinstance(value, np.ndarray) and value.ndim == 4:
+                # 可能是 [batch, H, W, C] 格式
+                print(f"      ⚠️ {key} 是4维数组 {value.shape}，尝试取第一个元素")
+                image_keys.append(key)
+        
+        if len(image_keys) == 0:
+            print("   ⚠️ 第一帧没有图像数据（没有3维或4维的 ndarray）")
+            continue
+        
+        # 保存每个相机的图像
+        file_basename = Path(path).stem
+        for img_key in image_keys:
+            img = obs[img_key]
+            
+            # 处理4维数组 (batch维度)
+            if img.ndim == 4:
+                print(f"   📷 {img_key} (4D数组):")
+                print(f"      原始形状: {img.shape}")
+                img = img[0]  # 取第一个batch
+                print(f"      处理后形状: {img.shape}")
+            
+            # 转换 RGB to BGR (OpenCV 格式)
+            if img.shape[-1] == 3:
+                img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            else:
+                img_bgr = img
+            
+            # 保存图像
+            output_path = os.path.join(
+                output_dir, f"{file_basename}_{img_key}.png"
+            )
+            cv2.imwrite(output_path, img_bgr)
+            
+            print(f"   ✅ 保存 {img_key}: {output_path}")
+            print(f"      形状: {img.shape}, dtype: {img.dtype}")
+            print(f"      范围: [{img.min()}, {img.max()}]")
+    
+    print(f"\n✅ 所有图像已保存到: {output_dir}")
+
 
 def analyze_demo_data(demo_paths):
     """分析 demo 数据的统计信息"""
@@ -750,6 +940,16 @@ def main(_):
     print("Demo 数据完整诊断工具")
     print("🔬 " * 35)
     
+    # 🖼️ 如果启用了显示第一帧图像
+    if FLAGS.show_first_frame:
+        show_first_frame_images(FLAGS.demo_path)
+        print()
+    
+    # 🖼️ 如果启用了保存第一帧图像
+    if FLAGS.save_first_frame:
+        save_first_frame_images(FLAGS.demo_path)
+        print()
+    
     # 如果启用了详细模式，先进行递归结构分析
     if FLAGS.detailed:
         analyze_trajectory_structure(FLAGS.demo_path)
@@ -766,10 +966,6 @@ def main(_):
         for sigma_max in [5.0, 10.0, 20.0]:
             print(f"\n--- sigma_max = {sigma_max} ---")
             estimate_bc_loss_scale(actions, sigma_max=sigma_max, sigma_data=0.5)
-    
-    # 分析配置
-    if FLAGS.exp_name:
-        analyze_config(FLAGS.exp_name)
     
     # 总结建议
     print_section("总结与建议")

@@ -19,7 +19,7 @@ from serl_launcher.wrappers.chunking import ChunkingWrapper
 from serl_launcher.networks.reward_classifier import load_classifier_func
 
 from experiments.config import DefaultTrainingConfig
-from experiments.Insert_block.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
+from experiments.insert_block.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
 
 
 class EnvConfig(DefaultA1XEnvConfig):
@@ -130,7 +130,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Insert the network cable into the port"
+    task_desc = "Wipe the whiteboard clean"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"

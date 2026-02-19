@@ -19,7 +19,7 @@ from serl_launcher.wrappers.chunking import ChunkingWrapper
 from serl_launcher.networks.reward_classifier import load_classifier_func
 
 from experiments.config import DefaultTrainingConfig
-from experiments.Insert_block.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
+from experiments.insert_block.wrapper import A1XTaskEnv, A1XGripperPenaltyWrapper
 
 
 class EnvConfig(DefaultA1XEnvConfig):
@@ -78,8 +78,8 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.01531, 1.82555, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
-    
+    RESET_JOINT_STATE = np.array([-0.06957447, 1.79808511, -1.39553191, 1.14404255, -0.05425532, -0.01276596, 100.0])  # 夹爪张开
+    USE_GRIPPER = False 
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -130,12 +130,12 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Wipe the whiteboard clean"
+    task_desc = "toast the bread"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"
     octo_path = "hf://rail-berkeley/octo-small-1.5"
-    teleoperation_device = "gello"  # "gello", "spacemouse", or None
+    teleoperation_device = "spacemouse"  # "gello", "spacemouse", or None
     
     # 🆕 新版 GelloIntervention 配置（基于 launch_yaml.py）
     gello_config_path = "/home/dungeon_master/conrft/Gello/gello_software/configs/yam_A1_X.yaml"  # YAML 配置文件路径

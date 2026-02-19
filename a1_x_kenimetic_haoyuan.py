@@ -31,8 +31,8 @@ class A1Kinematics:
         self.ik_config = IKSolverConfig.load_from_robot_config(
             self.robot_cfg, None,
             num_seeds=32,  # 增加seeds
-            position_threshold=0.005,  # 5mm
-            rotation_threshold=0.05,  # ~2.9度
+            position_threshold=0.002,  # 5mm
+            rotation_threshold=0.005,  # ~2.9度
             regularization=True, 
             use_cuda_graph=False,
             tensor_args=self.tensor_args)

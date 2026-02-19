@@ -467,13 +467,13 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         self.action_space = gym.spaces.Box(
             low=np.array([
-                -0.02, -0.02, -0.02,   # 前三维
-                -0.01, -0.01, -0.1,  # 第4-6维
+                -0.001, -0.001, -0.001,   # 前三维
+                -0.01, -0.05, -0.01,  # 第4-6维
                 -0.2                # 最后一维
             ], dtype=np.float32),
             high=np.array([
-                0.02,  0.02,  0.02,
-                0.01, 0.01, 0.1,
+                0.001,  0.001,  0.001,
+                0.01, 0.05, 0.01,
                 0.2
             ], dtype=np.float32),
             dtype=np.float32
@@ -529,8 +529,20 @@ class SpacemouseIntervention(gym.ActionWrapper):
         self.left, self.right = buttons[0], buttons[-1]
         intervened = False
         
-        if np.linalg.norm(expert_a) > 0.001:
+        # 🛡️ 分别检查位置和旋转的死区（避免小旋转被过滤）
+        pos_norm = np.linalg.norm(expert_a[:3])  # 位置死区
+        rot_norm = np.linalg.norm(expert_a[3:6])  # 旋转死区
+        
+        # 只要位置或旋转有一个超过阈值就认为有干预
+        if pos_norm > 0.001 or rot_norm > 0.001:  # 旋转阈值更小 (0.005 rad ≈ 0.3°)
             intervened = True
+        else:
+            # 🔍 定期打印死区内的 SpaceMouse 读数（诊断漂移）
+            if not hasattr(self, '_deadband_count'):
+                self._deadband_count = 0
+            self._deadband_count += 1
+            if self._deadband_count % 100 == 1:
+                print(f"🛡️ [SpaceMouse] 死区过滤: pos_norm={pos_norm:.6f}, rot_norm={rot_norm:.6f}, expert_a={expert_a}")
 
         if self.gripper_enabled:
             if self.left:  # close gripper
@@ -1022,6 +1034,9 @@ class GelloIntervention(gym.ActionWrapper):
            #     t2 = time.time()
                 
                 if target_a1x is not None:
+                    # 🔒 固定夹爪位置：无论 Gello 如何移动，都固定在 1.5mm
+                    target_a1x[-1] = 1.5
+                    
                     # 3. 发送命令到机器人
                     if robot is not None:
                         robot.command_joint_state(target_a1x, from_gello=False)
@@ -1452,6 +1467,39 @@ class GelloIntervention(gym.ActionWrapper):
         # ==================== 快速干预模式（不推荐用于数据采集）====================
         # if self.fast_intervention_mode and self.intervention_enabled and not self.threaded_control:
         #     return self._fast_intervention_step(action)
+        
+        # ==================== 🛡️ 非干预模式：完全静止 ====================
+        # 如果干预未启用，不执行任何动作，保持静止
+        if not self.intervention_enabled:
+            # 不调用 env.step()，避免零动作导致的IK求解和微小漂移
+            # 只返回上一次的观测
+            obs = self.last_obs if self.last_obs is not None else self.env.reset()[0]
+            rew = 0.0
+            done = False
+            truncated = False
+            
+            # 检查手动标记
+            if self.manual_success_flag:
+                rew = 1.0
+                self.manual_success_flag = False
+                done = True
+                manual_succeed = True
+                print(f"✅ 手动奖励已应用: reward={rew}, succeed=True")
+            elif self.manual_failure_flag:
+                rew = -1.0
+                self.manual_failure_flag = False
+                done = True
+                manual_succeed = False
+                print(f"❌ 手动奖励已应用: reward={rew}, succeed=False")
+            else:
+                manual_succeed = None
+            
+            info = {
+                "gello_intervened": False,
+                "intervention_disabled": True,
+                "succeed": rew > 0 if manual_succeed is None else manual_succeed,
+            }
+            return obs, rew, done, truncated, info
         
         # ==================== 原始干预模式 ====================
         # Process action through intervention logic

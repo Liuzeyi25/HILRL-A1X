@@ -1,10 +1,9 @@
 """A1_X robot controlled via ROS2.
 
-This module provides a Robot interface for the A1_X robot arm controlled via ROS2.
-The robot publishes commands to /motion_target/target_joint_state_arm topic.
-
-This implementation uses a subprocess with system Python to run ROS2 nodes,
-communicating via ZMQ to work around Python version incompatibilities.
+Communication architecture:
+  - ROS2 node runs in a subprocess (system Python 3.10)
+  - Main process communicates via dual ZMQ sockets (command + state)
+  - Local CuRobo IK solver for EEF delta control
 """
 
 import os
@@ -15,11 +14,11 @@ import time
 from typing import Dict, Optional
 
 import numpy as np
+import torch
 import zmq
 from scipy.spatial.transform import Rotation as R
-import torch
 
-# Add project root to path for A1Kinematics import
+# A1Kinematics import
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -31,136 +30,128 @@ except ImportError:
     HAS_A1_KINEMATICS = False
     print("Warning: A1Kinematics not available. IK will not work.")
 
+# Gello <-> A1X joint mapping ranges (7 joints including gripper)
+_GELLO_RANGE_START = np.array([-2.87, 0.0, 0.0, -1.57, -1.34, -2.0, 0.103])
+_GELLO_RANGE_END = np.array([2.87, 3.14, 3.14, 1.57, 1.34, 2.0, 1.0])
+_A1X_RANGE_START = np.array([-2.880, 0.0, 0.0, 1.55, 1.521, -1.56, 2.0])
+_A1X_RANGE_END = np.array([2.880, 3.14, -2.95, -1.55, -1.52, 1.56, 99.0])
+
+
+def _linear_map(value: np.ndarray, in_start: np.ndarray, in_end: np.ndarray,
+                out_start: np.ndarray, out_end: np.ndarray) -> np.ndarray:
+    """Vectorized linear mapping with clipping for reversed ranges."""
+    lo = np.minimum(in_start, in_end)
+    hi = np.maximum(in_start, in_end)
+    clipped = np.clip(value, lo, hi)
+
+    in_range = in_end - in_start
+    safe = np.abs(in_range) > 1e-9
+    t = np.where(safe, (clipped - in_start) / np.where(safe, in_range, 1.0), 0.0)
+    return out_start + t * (out_end - out_start)
+
+
+def _pad_or_trim(arr: np.ndarray, target_len: int) -> np.ndarray:
+    """Pad with zeros or trim array to target_len."""
+    if len(arr) > target_len:
+        return arr[:target_len]
+    if len(arr) < target_len:
+        return np.pad(arr, (0, target_len - len(arr)), "constant")
+    return arr
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ZMQ Bridge
+# ──────────────────────────────────────────────────────────────────────
 
 class A1XRobotBridge:
-    """Bridge to communicate with ROS2 node via ZMQ.
-    
-    🚀 方案1优化：使用两个独立的 Socket 分离命令和状态查询
-    - command_socket: 专门发送关节命令（控制线程使用）
-    - state_socket: 专门查询状态（主线程使用）
-    
-    这样两个线程不再共享锁，消除锁竞争导致的延迟。
+    """Dual-socket ZMQ bridge to ROS2 node.
+
+    Separates command and state into independent sockets to eliminate
+    lock contention between control and observation threads.
     """
-    
+
+    _ZMQ_TIMEOUT_MS = 50
+
     def __init__(self, port: int = 6100, state_port: int = None):
-        """初始化双Socket桥接。
-        
-        Args:
-            port: 命令端口 (command socket)
-            state_port: 状态端口 (state socket)，默认为 port + 1
-        """
         self.command_port = port
-        self.state_port = state_port if state_port is not None else port + 1
-        
+        self.state_port = state_port or port + 1
+
         self.context = zmq.Context()
-        
-        # Command socket - 专门发送命令（控制线程使用）
-        self.command_socket = self.context.socket(zmq.REQ)
-        self.command_socket.setsockopt(zmq.RCVTIMEO, 50)  # 50ms timeout
-        self.command_socket.setsockopt(zmq.SNDTIMEO, 50)
-        self.command_socket.setsockopt(zmq.LINGER, 0)
-        self.command_socket.connect(f"tcp://localhost:{self.command_port}")
-        self._command_lock = threading.Lock()  # 命令专用锁
-        
-        # State socket - 专门查询状态（主线程使用）
-        self.state_socket = self.context.socket(zmq.REQ)
-        self.state_socket.setsockopt(zmq.RCVTIMEO, 50)  # 50ms timeout
-        self.state_socket.setsockopt(zmq.SNDTIMEO, 50)
-        self.state_socket.setsockopt(zmq.LINGER, 0)
-        self.state_socket.connect(f"tcp://localhost:{self.state_port}")
-        self._state_lock = threading.Lock()  # 状态专用锁
-        
-        print(f"🚀 [A1XRobotBridge] 双Socket模式初始化")
-        print(f"   Command port: {self.command_port}")
-        print(f"   State port: {self.state_port}")
-        
-    def _reset_command_socket(self):
-        """Reset command socket after timeout/error."""
+        self.command_socket = self._make_socket(self.command_port)
+        self.state_socket = self._make_socket(self.state_port)
+        self._command_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+
+        print(f"[A1XRobotBridge] Command port: {self.command_port}, State port: {self.state_port}")
+
+    def _make_socket(self, port: int) -> zmq.Socket:
+        sock = self.context.socket(zmq.REQ)
+        sock.setsockopt(zmq.RCVTIMEO, self._ZMQ_TIMEOUT_MS)
+        sock.setsockopt(zmq.SNDTIMEO, self._ZMQ_TIMEOUT_MS)
+        sock.setsockopt(zmq.LINGER, 0)
+        sock.connect(f"tcp://localhost:{port}")
+        return sock
+
+    def _reset_socket(self, attr: str, port: int):
+        old = getattr(self, attr)
         try:
-            self.command_socket.close()
-        except:
+            old.close()
+        except Exception:
             pass
-        self.command_socket = self.context.socket(zmq.REQ)
-        self.command_socket.setsockopt(zmq.RCVTIMEO, 50)
-        self.command_socket.setsockopt(zmq.SNDTIMEO, 50)
-        self.command_socket.setsockopt(zmq.LINGER, 0)
-        self.command_socket.connect(f"tcp://localhost:{self.command_port}")
-        
-    def _reset_state_socket(self):
-        """Reset state socket after timeout/error."""
-        try:
-            self.state_socket.close()
-        except:
-            pass
-        self.state_socket = self.context.socket(zmq.REQ)
-        self.state_socket.setsockopt(zmq.RCVTIMEO, 50)
-        self.state_socket.setsockopt(zmq.SNDTIMEO, 50)
-        self.state_socket.setsockopt(zmq.LINGER, 0)
-        self.state_socket.connect(f"tcp://localhost:{self.state_port}")
-        
+        setattr(self, attr, self._make_socket(port))
+
     def get_joint_state(self) -> Optional[Dict]:
-        """Get current joint state from ROS2 node.
-        
-        使用独立的 state_socket，不会阻塞控制线程。
-        """
         with self._state_lock:
             try:
                 self.state_socket.send_json({"cmd": "get_state"})
-                response = self.state_socket.recv_json()
-                return response
+                return self.state_socket.recv_json()
             except zmq.Again:
                 print("Timeout waiting for joint state, resetting state socket...")
-                self._reset_state_socket()
+                self._reset_socket("state_socket", self.state_port)
                 return None
             except Exception as e:
                 print(f"Error getting joint state: {e}")
-                self._reset_state_socket()
+                self._reset_socket("state_socket", self.state_port)
                 return None
-    
+
     def command_joint_positions(self, positions: np.ndarray):
-        """Send joint position commands to ROS2 node.
-        
-        使用独立的 command_socket，不会阻塞状态查询线程。
-        """
         with self._command_lock:
             try:
                 self.command_socket.send_json({
                     "cmd": "command_joint_state",
-                    "positions": positions.tolist()
+                    "positions": positions.tolist(),
                 })
-                # Receive immediate acknowledgment
                 self.command_socket.recv_json()
             except zmq.Again:
                 print("Timeout sending joint command, resetting command socket...")
-                self._reset_command_socket()
+                self._reset_socket("command_socket", self.command_port)
             except Exception as e:
                 print(f"Error commanding joints: {e}")
-                self._reset_command_socket()
-    
+                self._reset_socket("command_socket", self.command_port)
+
     def close(self):
-        """Close ZMQ connections."""
-        # Shutdown via command socket
         try:
             self.command_socket.send_json({"cmd": "shutdown"})
             self.command_socket.recv_json()
-        except:
+        except Exception:
             pass
-        
         self.command_socket.close()
         self.state_socket.close()
         self.context.term()
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Robot
+# ──────────────────────────────────────────────────────────────────────
+
 class A1XRobot:
-    """A class representing an A1_X robot controlled via ROS2.
-    
-    The A1_X robot is controlled through ROS2 topics:
-    - Commands are published to /motion_target/target_joint_state_arm
-    - Joint states are received from /hdas/feedback_arm
-    
-    This implementation runs ROS2 node in a separate process using system Python 3.10
-    and communicates via ZMQ.
+    """A1_X robot interface with ROS2 subprocess + local IK solver.
+
+    Communication via ZMQ dual-socket bridge.
+    EEF control uses CuRobo IK to convert Cartesian deltas to joint commands.
     """
+
+    URDF_PATH = "/home/dungeon_master/A1_X/arm/install/mobiman/share/mobiman/urdf/A1X/urdf/a1x.urdf"
 
     def __init__(
         self,
@@ -170,564 +161,388 @@ class A1XRobot:
         python_path: str = "/usr/bin/python3",
         use_curobo_ik: bool = True,
         curobo_ik_service: Optional[str] = None,
+        reset_joint_state: Optional[np.ndarray] = None,
     ):
-        """Initialize the A1_X robot.
-        
-        Args:
-            num_dofs: Number of degrees of freedom (joints) of the robot. Default is 7.
-            node_name: Name of the ROS2 node. Default is "a1x_gello_node".
-            port: ZMQ port for communication. Default is 6100.
-            python_path: Path to system Python 3.10 with ROS2. Default is /usr/bin/python3.
-            use_curobo_ik: If True, use CuRobo IK solver; otherwise use RelaxedIK. Default is False.
-            curobo_ik_service: Optional external CuRobo IK service address (e.g. tcp://127.0.0.1:6202).
-        """
         self._num_dofs = num_dofs
         self._port = port
         self._use_curobo_ik = use_curobo_ik
         self._curobo_ik_service = curobo_ik_service or os.environ.get("CUROBO_IK_SERVICE")
-        
-        # Start ROS2 node process
-        print("Starting ROS2 node subprocess...")
-        script_path = os.path.join(os.path.dirname(__file__), "a1x_ros2_node.py")
-        
-        # 🔧 Add --use-curobo-ik flag if requested
-        ik_flag = " --use-curobo-ik" if use_curobo_ik else ""
-        service_flag = (
-            f" --curobo-ik-service {self._curobo_ik_service}"
-            if self._curobo_ik_service
-            else ""
-        )
-        
-        # Source ROS2 and run the node (use .zsh for subprocess compatibility)
-        cmd = (
-            f"source /opt/ros/humble/setup.zsh && {python_path} {script_path} "
-            f"--port {port} --node-name {node_name}{ik_flag}{service_flag}"
-        )
-        
-        if use_curobo_ik:
-            print("🚀 Using CuRobo IK solver for end-effector control")
-        else:
-            print("🎯 Using RelaxedIK (Cartesian control) for end-effector control")
-        
-        self._ros2_process = subprocess.Popen(
-            cmd,
-            shell=True,
-            executable="/bin/zsh",
-            stdout=None,  # Don't capture, let it print to terminal
-            stderr=None,  # Don't capture, let it print to terminal
-        )
-        
-        # Check if process started successfully
-        time.sleep(1)
-        if self._ros2_process.poll() is not None:
-            # Process exited
-            print(f"ROS2 node failed to start (exit code: {self._ros2_process.returncode})")
-        
-        # Wait a bit more for the node to initialize
-        time.sleep(1)
-        
-        # Connect to ROS2 node via ZMQ (dual socket mode)
+        self._reset_joint_state = reset_joint_state
+        self._last_commanded_state = np.zeros(num_dofs)
+
+        # Gripper EMA filter
+        self._gripper_filtered = None
+        self._gripper_alpha = 0.3
+
+        # EE target position locking (anti-drift)
+        self._locked_ee_pos: Optional[np.ndarray] = None
+        self._locked_ee_quat: Optional[np.ndarray] = None  # [x,y,z,w]
+
+        # Start ROS2 subprocess
+        self._start_ros2_node(node_name, port, python_path)
+
+        # ZMQ bridge
         print(f"Connecting to ROS2 node on ports {port} (cmd) and {port + 1} (state)...")
         self._bridge = A1XRobotBridge(port=port, state_port=port + 1)
-        
-        # Wait for first joint state message
+        self._wait_for_connection()
+
+        # IK solver
+        self._ik_solver = None
+        if use_curobo_ik and HAS_A1_KINEMATICS:
+            self._init_ik_solver()
+
+    # ------------------------------------------------------------------
+    # Initialization helpers
+    # ------------------------------------------------------------------
+
+    def _start_ros2_node(self, node_name: str, port: int, python_path: str):
+        script_path = os.path.join(os.path.dirname(__file__), "a1x_ros2_node.py")
+
+        cmd_parts = [
+            f"source /opt/ros/humble/setup.zsh &&",
+            f"{python_path} {script_path}",
+            f"--port {port} --node-name {node_name}",
+        ]
+        if self._use_curobo_ik:
+            cmd_parts.append("--use-curobo-ik")
+        if self._curobo_ik_service:
+            cmd_parts.append(f"--curobo-ik-service {self._curobo_ik_service}")
+
+        print(f"Starting ROS2 node subprocess ({'CuRobo IK' if self._use_curobo_ik else 'RelaxedIK'})...")
+        self._ros2_process = subprocess.Popen(
+            " ".join(cmd_parts),
+            shell=True,
+            executable="/bin/zsh",
+            stdout=None,
+            stderr=None,
+        )
+        time.sleep(2)
+        if self._ros2_process.poll() is not None:
+            print(f"ROS2 node failed to start (exit code: {self._ros2_process.returncode})")
+
+    def _wait_for_connection(self, timeout: float = 10.0):
         print("Waiting for joint states from A1_X robot...")
-        timeout = 10.0  # seconds
-        start_time = time.time()
+        start = time.time()
         state = None
-        while state is None:
+        while state is None and (time.time() - start) < timeout:
             state = self._bridge.get_joint_state()
             time.sleep(0.1)
-            if time.time() - start_time > timeout:
-                print(f"Warning: No joint states received after {timeout}s")
-                break
-        
+
         if state is not None:
             print("A1_X robot connected successfully")
             if state.get("joint_names"):
                 print(f"Joint names: {state['joint_names']}")
-        
-        # Initialize internal state
-        self._last_commanded_state = np.zeros(self._num_dofs)
-        
-        # Gripper smoothing filter (EMA)
-        self._gripper_filtered = None  # Will be initialized on first command
-        # 🔧 alpha 值说明:
-        #   - alpha=0.01: 极慢响应（99%旧值+1%新值），约需 460 步才能达到目标的 99%
-        #   - alpha=0.1:  较慢响应，约需 44 步
-        #   - alpha=0.3:  中等响应，约需 13 步
-        #   - alpha=0.5:  较快响应，约需 7 步
-        #   - alpha=1.0:  无滤波，直接响应
-        # 在 500Hz 控制下: 13步 ≈ 26ms, 44步 ≈ 88ms
-        self._gripper_alpha = 0.3  # 🔧 从 0.01 改为 0.3，提高夹爪响应速度
-        
-        # Initialize IK solver if using CuRobo IK
-        self._ik_solver = None
-        if use_curobo_ik and HAS_A1_KINEMATICS:
-            print("Initializing A1Kinematics IK solver...")
-            urdf_path = "/home/dungeon_master/A1_X/arm/install/mobiman/share/mobiman/urdf/A1X/urdf/a1x.urdf"
-            try:
-                self._ik_solver = A1Kinematics(
-                    urdf_file=urdf_path,
-                    base_link="base_link",
-                    ee_link="gripper_link"
+        else:
+            print(f"Warning: No joint states received after {timeout}s")
+
+    def _init_ik_solver(self):
+        print("Initializing A1Kinematics IK solver...")
+        try:
+            self._ik_solver = A1Kinematics(
+                urdf_file=self.URDF_PATH,
+                base_link="base_link",
+                ee_link="gripper_link",
+            )
+            if self._reset_joint_state is not None:
+                self._ik_solver.prev_q = torch.as_tensor(
+                    self._reset_joint_state[:6],
+                    **self._ik_solver.tensor_args.as_torch_dict(),
                 )
-                print("✅ A1Kinematics IK solver initialized successfully")
-            except Exception as e:
-                print(f"⚠️ Failed to initialize A1Kinematics: {e}")
-                self._ik_solver = None
+            print("A1Kinematics IK solver initialized")
+        except Exception as e:
+            print(f"Failed to initialize A1Kinematics: {e}")
+            self._ik_solver = None
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
 
     def num_dofs(self) -> int:
-        """Get the number of joints of the robot.
-        
-        Returns:
-            int: The number of joints of the robot.
-        """
         return self._num_dofs
 
-    def get_joint_state(self) -> np.ndarray:
-        """Get the current state of the robot.
-        
-        Returns:
-            np.ndarray: The current joint positions of the robot.
-        """
-        state = self._bridge.get_joint_state()
-        if state is None or state.get("positions") is None:
-            # Return last commanded state if no feedback available
-            return self._last_commanded_state
-        
-        joint_state = np.array(state["positions"])
-        
-        # Ensure correct number of DOFs
-        if len(joint_state) != self._num_dofs:
-            if len(joint_state) > self._num_dofs:
-                joint_state = joint_state[:self._num_dofs]
-            else:
-                joint_state = np.pad(
-                    joint_state,
-                    (0, self._num_dofs - len(joint_state)),
-                    "constant"
-                )
-        
-        # haoyuan print - 🚀 高频循环中禁用
-        # print("!!current gripper:", joint_state[6])
-        return joint_state
+    # ------------------------------------------------------------------
+    # State queries
+    # ------------------------------------------------------------------
 
-    def get_eef_pose(self) -> tuple:
-        """Get current end-effector pose.
-        
-        Returns:
-            tuple: (position, quaternion) where:
-                - position: np.ndarray [x, y, z] in meters
-                - quaternion: np.ndarray [x, y, z, w]
-        """
+    def get_state_snapshot(self) -> Optional[Dict]:
+        """Atomic state snapshot: joints + EE pose + timestamps."""
+        t_start = time.time()
         state = self._bridge.get_joint_state()
-        if state is None:
-            return np.zeros(3), np.array([0, 0, 0, 1])
+        t_zmq = time.time() - t_start
         
+        if state is None:
+            return None
+
+        positions = state.get("positions")
+        joint_positions = (
+            _pad_or_trim(np.array(positions), self._num_dofs)
+            if positions is not None
+            else self._last_commanded_state.copy()
+        )
+
+        velocities = state.get("velocities")
+        joint_velocities = (
+            _pad_or_trim(np.array(velocities), self._num_dofs)
+            if velocities is not None
+            else np.zeros(self._num_dofs)
+        )
+
         ee_pos = np.array(state.get("ee_pos", [0, 0, 0]))
         ee_quat = np.array(state.get("ee_quat", [0, 0, 0, 1]))
+        joint_ts = state.get("joint_ts", 0.0)
+        ee_ts = state.get("ee_ts", 0.0)
         
-        return ee_pos, ee_quat
-
-    def command_joint_state(self, joint_state: np.ndarray, from_gello: bool = True) -> None:
-        """Command the robot to a given state.
-        
-        Args:
-            joint_state (np.ndarray): The joint positions to command the robot to.
-            from_gello (bool): If True, apply Gello-to-A1X mapping. If False, treat as 
-                             native A1X joint positions (e.g., from reset/environment).
-        """
-        assert len(joint_state) == self._num_dofs, (
-            f"Expected {self._num_dofs} joint values, got {len(joint_state)}"
-        )
-        
-        # Save requested state
-        self._last_commanded_state = joint_state.copy()
-
-        # Map from Gello joint ranges to A1_X joint ranges if needed
-        if from_gello:
-            try:
-                mapped = self._map_to_a1x(joint_state)
-            except Exception as e:
-                print(f"Warning: Gello mapping failed: {e}, using raw values")
-                # Fallback to sending raw values if mapping fails
-                mapped = joint_state
-        else:
-            # Already in A1X joint space, no mapping needed
-            mapped = joint_state
-        
-        # Apply gripper smoothing filter (EMA on gripper only - index 6)
-        if len(mapped) >= 7:
-            if self._gripper_filtered is None:
-                # Initialize filter with first value
-                self._gripper_filtered = mapped[6]
-            else:
-                # Apply exponential moving average: filtered = alpha * new + (1-alpha) * old
-                self._gripper_filtered = (
-                    self._gripper_alpha * mapped[6] + 
-                    (1 - self._gripper_alpha) * self._gripper_filtered
-                )
-            # Replace gripper value with filtered value
-            mapped = mapped.copy()
-            mapped[6] = self._gripper_filtered
-
-        # print(f"Commanding A1_X joints: {mapped}")
-        self._bridge.command_joint_positions(mapped)
-
-    def _map_to_a1x(self, joint_state: np.ndarray) -> np.ndarray:
-        """Linearly map Gello joint ranges to A1_X joint ranges.
-
-        Notes / assumptions:
-        - Input `joint_state` is length 7 (including gripper).
-        - Some ranges provided were given in reversed order; mapping handles that.
-        - If an input falls outside the provided Gello range it will be clipped.
-        """
-        # Gello joint ranges - (start, end) as the physical motion direction
-        gello_range_start = np.array([-2.87, 0.0, 0.0, -1.57, -1.34, -2.0, 0.103], dtype=float)
-        gello_range_end   = np.array([ 2.87, 3.14, 3.14,  1.57,  1.34,  2.0, 1.0], dtype=float)
-
-        # A1_X joint ranges (target output ranges)
-        # Gripper (idx 6): range is 0-100mm
-        #                  gello 0.103 (closed) -> A1_X 2mm (closed)
-        #                  gello 1.0 (open) -> A1_X 99mm (open)
-        a1x_range_start = np.array([-2.880, 0.0, 0.0,  1.55, 1.521, -1.56, 2.0], dtype=float)
-        a1x_range_end   = np.array([ 2.880, 3.14, -2.95, -1.55, -1.52,  1.56, 99.0], dtype=float)
-
-        js = np.asarray(joint_state, dtype=float).copy()
-        if js.size != 7:
-            raise ValueError("Expected 7 joint values for mapping to A1_X")
-
-        # Clip inputs to gello ranges (handle reversed ranges where start > end)
-        clipped = js.copy()
-        for i in range(7):
-            lo = min(gello_range_start[i], gello_range_end[i])
-            hi = max(gello_range_start[i], gello_range_end[i])
-            clipped[i] = np.clip(js[i], lo, hi)
-
-        # Compute linear mapping per-joint
-        # out = out_start + (in - in_start) * (out_end - out_start) / (in_end - in_start)
-        out = np.zeros_like(clipped)
-        for i in range(7):
-            in_start = gello_range_start[i]
-            in_end = gello_range_end[i]
-            out_start = a1x_range_start[i]
-            out_end = a1x_range_end[i]
-
-            in_range = in_end - in_start
-            # Avoid division by zero
-            if abs(in_range) < 1e-9:
-                out[i] = out_start
-            else:
-                t = (clipped[i] - in_start) / in_range  # normalized position [0, 1]
-                out[i] = out_start + t * (out_end - out_start)
-
-        return out
-
-    def _map_from_a1x(self, a1x_joints: np.ndarray) -> np.ndarray:
-        """Inverse mapping: A1_X joint ranges to Gello joint ranges.
-        
-        Given A1_X joint positions, compute the corresponding Gello positions.
-        This is the inverse of _map_to_a1x().
-        
-        Args:
-            a1x_joints: A1_X joint positions [7]
-            
-        Returns:
-            Gello joint positions [7]
-        """
-        # Same ranges as forward mapping
-        gello_range_start = np.array([-2.87, 0.0, 0.0, -1.57, -1.34, -2.0, 0.103], dtype=float)
-        gello_range_end   = np.array([ 2.87, 3.14, 3.14,  1.57,  1.34,  2.0, 1.0], dtype=float)
-        
-        a1x_range_start = np.array([-2.880, 0.0, 0.0,  1.55, 1.521, -1.56, 2.0], dtype=float)
-        a1x_range_end   = np.array([ 2.880, 3.14, -2.95, -1.55, -1.52,  1.56, 99.0], dtype=float)
-        
-        a1x = np.asarray(a1x_joints, dtype=float).copy()
-        if a1x.size != 7:
-            raise ValueError("Expected 7 joint values for inverse mapping from A1_X")
-        
-        # Clip inputs to A1X ranges
-        clipped = a1x.copy()
-        for i in range(7):
-            lo = min(a1x_range_start[i], a1x_range_end[i])
-            hi = max(a1x_range_start[i], a1x_range_end[i])
-            clipped[i] = np.clip(a1x[i], lo, hi)
-        
-        # Compute inverse linear mapping per-joint
-        # Solve for in: t = (in - in_start) / (in_end - in_start)
-        # where: out = out_start + t * (out_end - out_start)
-        # So: t = (out - out_start) / (out_end - out_start)
-        # And: in = in_start + t * (in_end - in_start)
-        
-        gello = np.zeros_like(clipped)
-        for i in range(7):
-            out_start = a1x_range_start[i]
-            out_end = a1x_range_end[i]
-            in_start = gello_range_start[i]
-            in_end = gello_range_end[i]
-            
-            out_range = out_end - out_start
-            # Avoid division by zero
-            if abs(out_range) < 1e-9:
-                gello[i] = in_start
-            else:
-                # Normalize: where is clipped[i] in [out_start, out_end]?
-                t = (clipped[i] - out_start) / out_range  # [0, 1]
-                gello[i] = in_start + t * (in_end - in_start)
-        
-        print(f"[A1X] Inverse mapping:")
-        print(f"  A1X input:     [{', '.join(f'{v:7.3f}' for v in a1x)}]")
-        print(f"  Gello output:  [{', '.join(f'{v:7.3f}' for v in gello)}]")
-        
-        return gello
-
-    def update_ik_seed(self):
-        """Update IK solver's seed (prev_q) to current joint state.
-        
-        Should be called after robot reset or any large joint-space movement
-        to ensure IK solver starts from the correct current position.
-        """
-        if self._ik_solver is None:
-            return
-        
-        current_joints = self.get_joint_state()[:6]
-        self._ik_solver.prev_q = torch.as_tensor(
-            current_joints,
-            dtype=torch.float32,
-            device=self._ik_solver.tensor_args.device
-        ).unsqueeze(0)
-        print(
-            f"[A1XRobot] Updated IK seed to current joints: "
-            f"{current_joints}"
-        )
-
-    def command_eef_pose(self, eef_delta: np.ndarray, wait_for_completion: bool = True, timeout: float = 2.0) -> dict:
-        """Command the robot with EEF delta pose using local IK solver.
-        
-        Args:
-            eef_delta: 7D array [delta_x, delta_y, delta_z, delta_rx, delta_ry, delta_rz, gripper]
-                      First 3: delta position (m)
-                      Next 3: delta rotation (euler angles in radians)
-                      Last 1: gripper absolute position (0-100mm) or delta if you scale it
-            wait_for_completion: 是否等待执行到位（目前未实现）
-            timeout: 超时时间（秒）（目前未实现）
-        
-        Returns:
-            dict with execution status or None if failed
-        """
-        if self._ik_solver is None:
-            print("⚠️ IK solver not available, cannot execute EEF command")
-            return None
-        
-        if len(eef_delta) != 7:
-            print(f"⚠️ Invalid eef_delta length: {len(eef_delta)}, expected 7")
-            return None
-        
-        # 获取当前状态
-        ee_pos, ee_quat = self.get_eef_pose()
-        current_joints = self.get_joint_state()[:6]  # 只取前6个关节
-        
-        if ee_pos is None or ee_quat is None:
-            print("⚠️ Current EE pose not available")
-            return None
-        
-        # 处理 delta action → 绝对目标位姿
-        delta_pos = np.array(eef_delta[:3])
-        delta_rot_euler = np.array(eef_delta[3:6])
-        gripper_position = eef_delta[6]
-        
-        # 计算目标位置
-        target_pos = ee_pos + delta_pos
-        
-        # 计算目标旋转（旋转组合）
-        current_rotation = R.from_quat(ee_quat)  # [x, y, z, w]
-        delta_rotation = R.from_euler('xyz', delta_rot_euler)
-        target_rotation = delta_rotation * current_rotation
-        target_quat = target_rotation.as_quat()  # [x, y, z, w]
-        
-        print(f"[a1x_robot] Action to be Solved - pos: {target_pos}, quat[x,y,z,w]: {target_quat}")
-        
-        # 调用本地 IK 求解器
-        try:
-            # 确保 prev_q 在正确的设备上（与 IK solver 相同）
-            self._ik_solver.prev_q = torch.as_tensor(
-                current_joints,
-                dtype=torch.float32,
-                device=self._ik_solver.tensor_args.device
-            ).unsqueeze(0)
-            result = self._ik_solver.solve_ik(
-                pos=target_pos,
-                quat=target_quat
-            )
-        except Exception as e:
-            print(f"⚠️ IK solve failed: {e}")
-            return None
-        
-        # 检查求解是否成功
-        if not result.success.cpu().numpy().any():
-            print("⚠️ IK solver failed to find solution")
-            return None
-        
-        # 获取关节解
-        joint_solution = result.js_solution.position.cpu().numpy()[:6]
-        
-        # 计算关节差距
-        joint_diff = np.abs(joint_solution - current_joints)
-        max_diff = joint_diff.max()
-        
-        print(f"[a1x_robot] IK Solution Found - joints: {joint_solution}, max joint diff: {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f}°)")
-        
-        # 构建完整的关节命令（包括夹爪）
-        full_joint_command = np.concatenate([joint_solution, [gripper_position]])
-        
-        # 直接发送关节命令（不通过 Gello 映射，因为这是直接的关节控制）
-        self.command_joint_state(full_joint_command, from_gello=False)
-        
-        return {
-            'target_joints': joint_solution.tolist(),
-            'reached': True,  # 简化：不等待到位
-            'final_error': 0.0,
-            'gripper': float(gripper_position)
-        }
-
-    def get_observations(self) -> Dict[str, np.ndarray]:
-        """Get the current observations of the robot.
-        
-        Returns:
-            Dict[str, np.ndarray]: A dictionary of observations including:
-                - joint_positions: Current joint positions
-                - joint_velocities: Current joint velocities
-                - ee_pos_quat: End-effector position and quaternion [x, y, z, qx, qy, qz, qw]
-                - gripper_position: Gripper position (if applicable)
-        """
-        joint_positions = self.get_joint_state()
-        
-        state = self._bridge.get_joint_state()
-        if state is not None and state.get("velocities") is not None:
-            joint_velocities = np.array(state["velocities"])
-        else:
-            joint_velocities = np.zeros(self._num_dofs)
-        
-        if len(joint_velocities) != self._num_dofs:
-            if len(joint_velocities) > self._num_dofs:
-                joint_velocities = joint_velocities[:self._num_dofs]
-            else:
-                joint_velocities = np.pad(
-                    joint_velocities,
-                    (0, self._num_dofs - len(joint_velocities)),
-                    "constant"
-                )
-        
-        # Get end-effector pose from ROS2
-        ee_pos, ee_quat = self.get_eef_pose()
-        ee_pos_quat = np.concatenate([ee_pos, ee_quat])  # [x, y, z, qx, qy, qz, qw]
-        
-        # Convert quaternion to RPY (roll, pitch, yaw) in radians
-        rotation = R.from_quat(ee_quat)  # expects [x, y, z, w]
-        ee_rpy = rotation.as_euler('xyz', degrees=False)  # returns [roll, pitch, yaw]
-        ee_pos_rot = np.concatenate([ee_pos, ee_rpy])  # [x, y, z, roll, pitch, yaw]
-        
-        # If the last joint is a gripper, extract it
-        if self._num_dofs >= 7:
-            gripper_position = np.array([joint_positions[-1]]) # gripper [0-100]
-        else:
-            gripper_position = np.array([0.0])
-        
-        ee_pos_rot_gripper = np.concatenate([ee_pos_rot, gripper_position / 100])  # [x, y, z, roll, pitch, yaw, gripper]
+        t_now = time.time()
 
         return {
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
-            "ee_pos_quat": ee_pos_quat,
-            "ee_pos_rot_gripper": ee_pos_rot_gripper, # gripper [0-1]
+            "ee_pos": ee_pos,
+            "ee_quat": ee_quat,
+            "joint_ts": joint_ts,
+            "ee_ts": ee_ts,
+            "ts_diff": abs(joint_ts - ee_ts),
+            "zmq_latency_ms": t_zmq * 1000,
+            "joint_age_ms": (t_now - joint_ts) * 1000 if joint_ts > 0 else 0.0,
+            "ee_age_ms": (t_now - ee_ts) * 1000 if ee_ts > 0 else 0.0,
+        }
+
+    def get_joint_state(self) -> np.ndarray:
+        state = self._bridge.get_joint_state()
+        if state is None or state.get("positions") is None:
+            return self._last_commanded_state.copy()
+        return _pad_or_trim(np.array(state["positions"]), self._num_dofs)
+
+    def get_eef_pose(self) -> tuple:
+        """Returns (position[3], quaternion[4] xyzw)."""
+        state = self._bridge.get_joint_state()
+        if state is None:
+            return np.zeros(3), np.array([0, 0, 0, 1.0])
+        return (
+            np.array(state.get("ee_pos", [0, 0, 0])),
+            np.array(state.get("ee_quat", [0, 0, 0, 1])),
+        )
+
+    def get_observations(self) -> Dict[str, np.ndarray]:
+        snapshot = self.get_state_snapshot()
+        if snapshot is None:
+            joint_positions = self._last_commanded_state.copy()
+            joint_velocities = np.zeros(self._num_dofs)
+            ee_pos = np.zeros(3)
+            ee_quat = np.array([0, 0, 0, 1.0])
+        else:
+            joint_positions = snapshot["joint_positions"]
+            joint_velocities = snapshot["joint_velocities"]
+            ee_pos = snapshot["ee_pos"]
+            ee_quat = snapshot["ee_quat"]
+
+        ee_rpy = R.from_quat(ee_quat).as_euler("xyz", degrees=False)
+        gripper_position = np.array([joint_positions[-1]]) if self._num_dofs >= 7 else np.array([0.0])
+
+        return {
+            "joint_positions": joint_positions,
+            "joint_velocities": joint_velocities,
+            "ee_pos_quat": np.concatenate([ee_pos, ee_quat]),
+            "ee_pos_rot_gripper": np.concatenate([ee_pos, ee_rpy, gripper_position / 100]),
             "gripper_position": gripper_position,
         }
 
+    # ------------------------------------------------------------------
+    # Joint commands
+    # ------------------------------------------------------------------
+
+    def command_joint_state(self, joint_state: np.ndarray, from_gello: bool = True) -> None:
+        assert len(joint_state) == self._num_dofs, (
+            f"Expected {self._num_dofs} joint values, got {len(joint_state)}"
+        )
+        self._last_commanded_state = joint_state.copy()
+
+        mapped = self._map_to_a1x(joint_state) if from_gello else joint_state
+
+        # Apply gripper EMA filter (index 6)
+        if len(mapped) >= 7:
+            raw_gripper = mapped[6]
+            if self._gripper_filtered is None:
+                self._gripper_filtered = raw_gripper
+            else:
+                self._gripper_filtered += self._gripper_alpha * (raw_gripper - self._gripper_filtered)
+            mapped = mapped.copy()
+            mapped[6] = self._gripper_filtered
+
+        self._bridge.command_joint_positions(mapped)
+
+    # ------------------------------------------------------------------
+    # EE target locking (anti-drift)
+    # ------------------------------------------------------------------
+
+    def lock_ee_target(self) -> bool:
+        """Lock current EE pose as the target.
+
+        Call after reset or whenever the robot reaches a desired position.
+        Subsequent command_eef_pose calls accumulate deltas on this locked
+        target instead of reading drifted feedback, preventing servo drift.
+        """
+        snapshot = self.get_state_snapshot()
+        if snapshot is None:
+            print("[lock_ee_target] Failed to get state snapshot")
+            return False
+        self._locked_ee_pos = snapshot["ee_pos"].copy()
+        self._locked_ee_quat = snapshot["ee_quat"].copy()  # [x,y,z,w]
+        print(f"[lock_ee_target] Locked EE pos={self._locked_ee_pos}, quat={self._locked_ee_quat}")
+        return True
+
+    def unlock_ee_target(self):
+        """Unlock EE target, reverting to feedback-based control."""
+        self._locked_ee_pos = None
+        self._locked_ee_quat = None
+        print("[unlock_ee_target] EE target unlocked")
+
+    # ------------------------------------------------------------------
+    # EEF control
+    # ------------------------------------------------------------------
+
+    def command_eef_pose(self, eef_delta: np.ndarray, wait_for_completion: bool = True, timeout: float = 2.0) -> Optional[dict]:
+        """Apply EEF delta [dx,dy,dz, drx,dry,drz, gripper_mm] via IK.
+
+        When EE target is locked (via lock_ee_target), deltas accumulate
+        on the locked target — the robot always commands towards the
+        intended target, not the drifted feedback.
+        When unlocked, falls back to feedback-based control.
+        """
+        if self._ik_solver is None:
+            print("IK solver not available")
+            return None
+        if len(eef_delta) != 7:
+            print(f"Invalid eef_delta length: {len(eef_delta)}, expected 7")
+            return None
+
+        snapshot = self.get_state_snapshot()
+        if snapshot is None:
+            print("Failed to get state snapshot")
+            return None
+
+        if snapshot["ts_diff"] > 0.05:
+            print(f"Warning: joint/EE timestamp diff = {snapshot['ts_diff']*1000:.1f}ms")
+
+        current_joints = snapshot["joint_positions"][:6]
+        ee_pos = snapshot["ee_pos"]
+        ee_quat = snapshot["ee_quat"]  # [x, y, z, w]
+
+        # --- Determine target pos & quat ---
+        delta_pos = np.array(eef_delta[:3])
+        delta_rot = np.array(eef_delta[3:6])
+        gripper_position = eef_delta[6]
+
+        if self._locked_ee_pos is not None:
+            # ---- Locked mode: accumulate delta on locked target ----
+            self._locked_ee_pos = self._locked_ee_pos + delta_pos
+
+            if not np.allclose(delta_rot, 0.0, atol=1e-8):
+                locked_rotation = R.from_quat(self._locked_ee_quat)
+                delta_rotation = R.from_euler("xyz", delta_rot)
+                self._locked_ee_quat = (delta_rotation * locked_rotation).as_quat()
+
+            target_pos = self._locked_ee_pos.copy()
+            target_quat = self._locked_ee_quat.copy()
+
+            # Drift diagnostic
+            pos_drift = np.linalg.norm(ee_pos - target_pos)
+            print(f"[EE锁定] 目标pos={target_pos}, 反馈pos={ee_pos}, 位置偏差={pos_drift*1000:.2f}mm")
+        else:
+            # ---- Unlocked mode: feedback-based ----
+            target_pos = ee_pos + delta_pos
+            if np.allclose(delta_rot, 0.0, atol=1e-8):
+                target_quat = ee_quat
+            else:
+                current_rotation = R.from_quat(ee_quat)
+                delta_rotation = R.from_euler("xyz", delta_rot)
+                target_quat = (delta_rotation * current_rotation).as_quat()
+
+        print(f"当前关节角: {current_joints}")
+        print(f"指令EEF delta: pos {delta_pos}, rot {delta_rot}, gripper {gripper_position}mm")
+
+        # Update IK seed to actual joint feedback before solving
+        self._ik_solver.prev_q = torch.as_tensor(
+            current_joints,
+            dtype=torch.float32,
+            device=self._ik_solver.tensor_args.device,
+        ).unsqueeze(0)
+
+        try:
+            result = self._ik_solver.solve_ik(pos=target_pos, quat=target_quat)
+        except Exception as e:
+            print(f"IK solve failed: {e}")
+            return None
+
+        if not result.success.cpu().numpy().any():
+            print("IK solver failed to find solution")
+            return None
+
+        joint_solution = result.js_solution.position.cpu().numpy()[:6]
+        max_diff = np.abs(joint_solution - current_joints).max()
+        print(f"IK solution: max joint diff = {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f} deg)")
+
+        full_command = np.concatenate([joint_solution, [gripper_position]])
+        self.command_joint_state(full_command, from_gello=False)
+
+        return {
+            "target_joints": joint_solution.tolist(),
+            "reached": True,
+            "final_error": 0.0,
+            "gripper": float(gripper_position),
+        }
+
     def command_eef_chunk(
-        self, 
-        eef_poses: list, 
+        self,
+        eef_poses: list,
         correction_threshold: float = 0.005,
         max_corrections: int = 2,
-        timeout_per_step: float = 10.0
+        timeout_per_step: float = 10.0,
     ) -> dict:
-        """Execute an action chunk using single-step + correction strategy.
-        
-        This method implements the optimal strategy discovered through testing:
-        - Single large movement to each target (not multiple small steps)
-        - Iterative corrections if error exceeds threshold
-        - Expected performance: ~2-3s per 4cm movement with ~5mm final accuracy
-        
-        Based on test results:
-        - 4cm movement: 2.16s total, 3 movements (1 initial + 2 corrections)
-        - Final error: ~5mm (acceptable for most applications)
-        - 20× faster than multi-step approach (2.16s vs 16-20s)
-        
-        Args:
-            eef_poses: List of 7D arrays [delta_x, delta_y, delta_z, delta_rx, delta_ry, delta_rz, gripper]
-                      Each pose is a delta from the PREVIOUS pose (sequential deltas)
-            correction_threshold: meters, trigger correction if error > this (default 5mm)
-                                 Recommended: 5mm for speed, 2mm for precision
-            max_corrections: maximum number of corrections per step (default 2)
-                           Recommended: 2 for most cases, 3-4 for high precision
-            timeout_per_step: seconds timeout per movement (default 10s)
-        
-        Returns:
-            dict with:
-                - status: "ok", "timeout", or "error"
-                - chunk_results: list of dicts with per-step results (movements, errors, times)
-                - total_time: total execution time in seconds
-                - final_error: final position error in meters after last step
-                - (if timeout/error) failed_at_step: step index where execution failed
-        
-        Example:
-            >>> robot = A1XRobot()
-            >>> # Move 4cm in X over 4 steps (each step is 1cm delta from previous)
-            >>> chunk = [
-            ...     [0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0],  # Step 1: +1cm X
-            ...     [0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0],  # Step 2: +1cm X
-            ...     [0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0],  # Step 3: +1cm X
-            ...     [0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0],  # Step 4: +1cm X
-            ... ]
-            >>> result = robot.command_eef_chunk(chunk)
-            >>> print(f"Status: {result['status']}")
-            >>> print(f"Total time: {result['total_time']:.2f}s")
-            >>> print(f"Final error: {result['final_error']*1000:.2f}mm")
-        """
+        """Execute a sequence of EEF delta poses with iterative correction."""
         try:
-            self._bridge.socket.send_json({
+            self._bridge.command_socket.send_json({
                 "cmd": "command_eef_chunk",
                 "poses": eef_poses,
                 "correction_threshold": correction_threshold,
                 "max_corrections": max_corrections,
-                "timeout_per_step": timeout_per_step
+                "timeout_per_step": timeout_per_step,
             })
-            
-            # Wait for response (timeout includes all movements in chunk)
-            # Add 5s buffer per step for network/processing overhead
             total_timeout_ms = int((timeout_per_step + 5.0) * len(eef_poses) * 1000)
-            self._bridge.socket.setsockopt(zmq.RCVTIMEO, total_timeout_ms)
-            
-            result = self._bridge.socket.recv_json()
-            
-            # Restore default timeout
-            self._bridge.socket.setsockopt(zmq.RCVTIMEO, 20000)
-            
+            self._bridge.command_socket.setsockopt(zmq.RCVTIMEO, total_timeout_ms)
+            result = self._bridge.command_socket.recv_json()
+            self._bridge.command_socket.setsockopt(zmq.RCVTIMEO, self._bridge._ZMQ_TIMEOUT_MS)
             return result
-            
         except zmq.Again:
-            return {
-                "status": "error",
-                "error": "ZMQ timeout waiting for chunk execution"
-            }
+            return {"status": "error", "error": "ZMQ timeout waiting for chunk execution"}
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            return {"status": "error", "error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Gello <-> A1X joint mapping
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _map_to_a1x(joint_state: np.ndarray) -> np.ndarray:
+        """Gello joint positions -> A1X joint positions (7 DOF)."""
+        js = np.asarray(joint_state, dtype=float)
+        if js.size != 7:
+            raise ValueError("Expected 7 joint values for Gello->A1X mapping")
+        return _linear_map(js, _GELLO_RANGE_START, _GELLO_RANGE_END, _A1X_RANGE_START, _A1X_RANGE_END)
+
+    @staticmethod
+    def _map_from_a1x(a1x_joints: np.ndarray) -> np.ndarray:
+        """A1X joint positions -> Gello joint positions (7 DOF)."""
+        a1x = np.asarray(a1x_joints, dtype=float)
+        if a1x.size != 7:
+            raise ValueError("Expected 7 joint values for A1X->Gello mapping")
+        return _linear_map(a1x, _A1X_RANGE_START, _A1X_RANGE_END, _GELLO_RANGE_START, _GELLO_RANGE_END)
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
 
     def close(self):
-        """Clean up ROS2 resources."""
         if hasattr(self, "_bridge"):
             self._bridge.close()
         if hasattr(self, "_ros2_process"):
@@ -736,27 +551,17 @@ class A1XRobot:
 
 
 def main():
-    """Test the A1_X robot interface."""
     robot = A1XRobot(num_dofs=7)
-    
-    print("\nRobot initialized")
-    print(f"Number of DOFs: {robot.num_dofs()}")
-    
-    print("\nCurrent joint state:")
-    joint_state = robot.get_joint_state()
-    print(joint_state)
-    
-    print("\nObservations:")
+
+    print(f"\nDOFs: {robot.num_dofs()}")
+    print(f"Joint state: {robot.get_joint_state()}")
+
     obs = robot.get_observations()
     for key, value in obs.items():
         print(f"  {key}: {value}")
-    
-    print("\nTesting command (no movement, just publishing)...")
-    test_command = joint_state.copy()
-    robot.command_joint_state(test_command)
+
+    robot.command_joint_state(robot.get_joint_state(), from_gello=False)
     time.sleep(0.5)
-    
-    print("\nClosing robot...")
     robot.close()
     print("Done")
 

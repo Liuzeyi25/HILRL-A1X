@@ -65,7 +65,7 @@ class A1Kinematics:
             res.js_solution.position = best
             
         elapsed_time = (time.time() - start_time) * 1000  # ms
-        print(f"🌟 IK 求解耗时: {elapsed_time:.2f} ms")
+        # print(f"🌟 IK 求解耗时: {elapsed_time:.2f} ms")
         return res
         
         # elapsed_time = (time.time() - start_time) * 1000  # ms

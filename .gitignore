@@ -75,6 +75,9 @@ docs/_build/
 .pybuilder/
 target/
 
+checkpoint_*
+**/checkpoint_*
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -161,6 +164,8 @@ cython_debug/
 .ipynb_checkpoints/
 wandb
 *.png
+*.mp4
+*.pkl
 *.sif
 .vscode
 .idea
