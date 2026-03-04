@@ -27,7 +27,7 @@
 │  功能: 读取 Gello 设备，添加干预信息                                │
 │                                                                       │
 │  修改/添加数据:                                                       │
-│  ├─ info["intervene_action"]: shape (7,) - 关节空间动作             │
+│  ├─ info["intervene_action_eef"]: shape (7,) - 关节空间动作             │
 │  │   └─ 从 Gello 读取并映射到 A1X 关节空间                          │
 │  ├─ info["intervene_action_eef"]: shape (7,) - ⭐ 关键数据          │
 │  │   └─ [dx, dy, dz, drx, dry, drz, dgripper_norm]                 │
@@ -113,7 +113,7 @@
 │      "masks": float,              # 1.0 - done                      │
 │      "dones": bool,               # 是否结束                        │
 │      "infos": {                   # 元信息                          │
-│        "intervene_action": [7,],      # 关节空间动作                │
+│        "intervene_action_eef": [7,],      # 关节空间动作                │
 │        "intervene_action_eef": [7,],   # EEF 空间动作 ⭐           │
 │        "gello_intervened": bool,      # 是否干预                   │
 │        "succeed": bool,                # 是否成功                   │

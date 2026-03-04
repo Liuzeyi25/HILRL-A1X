@@ -36,9 +36,9 @@ for _ in range(1000):
     obs, reward, done, truncated, info = env.step(action)
     
     # 检查是否有干预
-    if "intervene_action" in info:
+    if "intervene_action_eef" in info:
         print("检测到干预")
-        delta_action = info["intervene_action"]
+        delta_action = info["intervene_action_eef"]
         absolute_action = info.get("intervene_action_absolute")
 ```
 
@@ -97,8 +97,8 @@ start_joints: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04]
 1. **移除对 `intervene_action` 的检查**
    ```python
    # 旧版
-   if "intervene_action" in info:
-       delta_action = info["intervene_action"]
+   if "intervene_action_eef" in info:
+       delta_action = info["intervene_action_eef"]
        absolute_action = info["intervene_action_absolute"]
    
    # 新版
@@ -116,7 +116,7 @@ start_joints: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04]
 3. **更新状态检测**
    ```python
    # 旧版：检测动作是否被替换
-   if "intervene_action" in info:
+   if "intervene_action_eef" in info:
        intervened = True
    
    # 新版：直接读取标志

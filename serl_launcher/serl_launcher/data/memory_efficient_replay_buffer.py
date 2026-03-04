@@ -20,6 +20,7 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
         include_grasp_penalty: Optional[bool] = False,
         include_octo_embeddings: Optional[bool] = False,
         include_mc_returns: Optional[bool] = False,
+        include_label: Optional[bool] = False,
     ):
         self.pixel_keys = pixel_keys
 
@@ -55,7 +56,8 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
             include_next_actions=include_next_actions,
             include_grasp_penalty=include_grasp_penalty,
             include_octo_embeddings=include_octo_embeddings,
-            include_mc_returns=include_mc_returns, 
+            include_mc_returns=include_mc_returns,
+            include_label=include_label,
         )
 
     def insert(self, data_dict: DatasetDict):

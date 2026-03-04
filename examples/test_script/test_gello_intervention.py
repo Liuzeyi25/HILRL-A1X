@@ -51,8 +51,8 @@ def test_gello_intervention():
             step_count += 1
             
             # 检查是否有干预
-            if "intervene_action" in info:
-                intervene_action = info["intervene_action"]
+            if "intervene_action_eef" in info:
+                intervene_action = info["intervene_action_eef"]
                 print(f"\n[Step {step_count}] 🎯 Gello 干预检测到!")
                 print(f"   增量动作 (前3个关节): [{intervene_action[0]:7.4f}, {intervene_action[1]:7.4f}, {intervene_action[2]:7.4f}]")
                 print(f"   当前位置 (前3个关节): {obs['state'][:3]}")

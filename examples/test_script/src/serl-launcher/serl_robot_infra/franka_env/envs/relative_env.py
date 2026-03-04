@@ -44,8 +44,8 @@ class RelativeFrame(gym.Wrapper):
         info['original_state_obs'] = copy.deepcopy(obs['state'])
 
         # this is to convert the spacemouse intervention action
-        if "intervene_action" in info:
-            info["intervene_action"] = self.transform_action_inv(info["intervene_action"])
+        if "intervene_action_eef" in info:
+            info["intervene_action_eef"] = self.transform_action_inv(info["intervene_action_eef"])
 
         # Update adjoint matrix
         self.adjoint_matrix = construct_adjoint_matrix(obs["state"]["tcp_pose"])
@@ -145,8 +145,8 @@ class DualRelativeFrame(gym.Wrapper):
         obs, reward, done, truncated, info = self.env.step(transformed_action)
 
         # this is to convert the spacemouse intervention action
-        if "intervene_action" in info:
-            info["intervene_action"] = self.transform_action_inv(info["intervene_action"])
+        if "intervene_action_eef" in info:
+            info["intervene_action_eef"] = self.transform_action_inv(info["intervene_action_eef"])
 
         # Update adjoint matrix
         self.left_adjoint_matrix = construct_adjoint_matrix(obs["state"]["left/tcp_pose"])

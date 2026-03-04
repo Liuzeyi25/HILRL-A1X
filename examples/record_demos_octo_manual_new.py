@@ -173,9 +173,9 @@ def main(_):
                 # 验证 EEF 动作是否有效
                 if np.sum(np.abs(actions[:6])) < 1e-6:
                     print("⚠️  检测到 EEF 动作前6维全0，可能是机器人未移动")
-            elif "intervene_action" in info:
+            elif "intervene_action_eef" in info:
                 # Fallback: 使用关节空间动作
-                actions = info["intervene_action"]  # A1X 关节空间 [7]
+                actions = info["intervene_action_eef"]  # A1X 关节空间 [7]
                 print("ℹ️  EEF 动作不可用，使用关节空间动作")
             else:
                 # 如果没有干预动作，使用零动作
@@ -239,9 +239,9 @@ def main(_):
             
             # 检查是否应该结束 episode（wrapper 会处理手动成功）
             if done:
-                # 🎯 如果是负奖励（'f'键标记失败），直接重新采集
-                if rew < 0:
-                    print(f"\n🔄 检测到负奖励 (rew={rew}) -> 重新采集 (不计入统计)")
+                # 🎯 如果是 'f' 键手动标记失败，直接丢弃本条轨迹重新采集
+                if info.get("manual_failure", False) or rew < 0:
+                    print(f"\n🔄 检测到手动失败标记 -> 丢弃本条轨迹，重新采集 (不计入统计)")
                     trajectory = []
                     returns = 0
                     obs, info = env.reset()

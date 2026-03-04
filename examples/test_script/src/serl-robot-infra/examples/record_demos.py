@@ -31,8 +31,8 @@ def main(_):
         actions = np.zeros(env.action_space.sample().shape) 
         next_obs, rew, done, truncated, info = env.step(actions)
         returns += rew
-        if "intervene_action" in info:
-            actions = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            actions = info["intervene_action_eef"]
         transition = copy.deepcopy(
             dict(
                 observations=obs,

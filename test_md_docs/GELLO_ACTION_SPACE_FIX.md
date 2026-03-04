@@ -84,7 +84,7 @@ def step(self, action):
     
     if replaced:
         # 存储delta动作（已执行的）
-        info["intervene_action"] = new_action
+        info["intervene_action_eef"] = new_action
         
         # 🔑 存储绝对目标（应该记录的）
         if hasattr(self, 'last_absolute_target') and self.last_absolute_target is not None:
@@ -103,8 +103,8 @@ next_obs, rew, done, truncated, info = env.step(actions)
 # 🔑 优先使用绝对目标位置
 if "intervene_action_absolute" in info:
     actions = info["intervene_action_absolute"]  # ✓ 绝对位置
-elif "intervene_action" in info:
-    actions = info["intervene_action"]  # 后备：delta
+elif "intervene_action_eef" in info:
+    actions = info["intervene_action_eef"]  # 后备：delta
 
 transition = dict(
     observations=obs,
@@ -176,8 +176,8 @@ transition = dict(
 if "intervene_action_absolute" in info:
     actions = info["intervene_action_absolute"]
     print(f"✓ 记录绝对动作: {actions[:3]}...")
-elif "intervene_action" in info:
-    actions = info["intervene_action"]
+elif "intervene_action_eef" in info:
+    actions = info["intervene_action_eef"]
     print(f"⚠️  记录delta动作: {actions[:3]}...")
 ```
 

@@ -198,8 +198,8 @@ def main(_):
             # 🎯 修复：优先使用关节空间动作（A1X joint delta）
             # EEF 空间转换目前未完全实现，会导致前6维为0
             if not manual_success_before_step:
-                if "intervene_action" in info:
-                    actions = info["intervene_action"]  # A1X 关节空间 [7]（推荐）
+                if "intervene_action_eef" in info:
+                    actions = info["intervene_action_eef"]  # A1X 关节空间 [7]（推荐）
                 elif "intervene_action_eef" in info:
                     actions = info["intervene_action_eef"]  # EEF空间（备用）
             else:

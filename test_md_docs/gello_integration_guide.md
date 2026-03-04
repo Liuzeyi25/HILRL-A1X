@@ -42,7 +42,7 @@ action = policy(obs)  # 策略动作
 obs, rew, done, _, info = env.step(action)
 
 # Gello 自动介入
-if "intervene_action" in info:
+if "intervene_action_eef" in info:
     print("Gello 正在控制机器人")
 ```
 
@@ -103,7 +103,7 @@ class GelloIntervention(gym.ActionWrapper):
         obs, rew, done, truncated, info = self.env.step(new_action)
         
         if intervened:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         
         return obs, rew, done, truncated, info
     
@@ -208,7 +208,7 @@ SpaceMouseExpert
     ↓ (task-space action)
 SpacemouseIntervention
     ↓ (检测输入)
-info["intervene_action"]
+info["intervene_action_eef"]
 ```
 
 ### Gello 数据流
@@ -219,7 +219,7 @@ GelloExpert
     ↓ (joint-space action)
 GelloIntervention
     ↓ (检测移动)
-info["intervene_action"]
+info["intervene_action_eef"]
 ```
 
 **关键区别**：

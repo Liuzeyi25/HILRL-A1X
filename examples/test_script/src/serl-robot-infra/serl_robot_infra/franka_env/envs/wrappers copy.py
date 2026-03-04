@@ -196,8 +196,8 @@ class GripperCloseEnv(gym.ActionWrapper):
     def step(self, action):
         new_action = self.action(action)
         obs, rew, done, truncated, info = self.env.step(new_action)
-        if "intervene_action" in info:
-            info["intervene_action"] = info["intervene_action"][:6]
+        if "intervene_action_eef" in info:
+            info["intervene_action_eef"] = info["intervene_action_eef"][:6]
         return obs, rew, done, truncated, info
     
     def reset(self, **kwargs):
@@ -257,7 +257,7 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         info["left"] = self.left
         info["right"] = self.right
         return obs, rew, done, truncated, info
@@ -325,7 +325,7 @@ class DualSpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         info["left1"] = self.left1
         info["left2"] = self.left2
         info["right1"] = self.right1
@@ -359,8 +359,8 @@ class GripperPenaltyWrapper(gym.RewardWrapper):
     def step(self, action):
         """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
         reward = self.reward(reward, action)
         self.last_gripper_pos = observation["state"][0, 0]
         return observation, reward, terminated, truncated, info
@@ -391,7 +391,7 @@ class DualGripperPenaltyWrapper(gym.RewardWrapper):
     def step(self, action):
         """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
         reward = self.reward(reward, action)
         return observation, reward, terminated, truncated, info

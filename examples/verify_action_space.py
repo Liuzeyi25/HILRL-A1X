@@ -138,7 +138,7 @@ def main():
                 print(f"   后台线程高频控制，主线程正常采集数据")
             
             # Check for intervention
-            if "intervene_action" in info:
+            if "intervene_action_eef" in info:
                 intervened_count += 1
                 
                 # 只打印前3次的详细信息
@@ -148,7 +148,7 @@ def main():
                     print(f"{'='*60}")
                     
                     # Get action
-                    intervene_action = info["intervene_action"]
+                    intervene_action = info["intervene_action_eef"]
                     print(f"\n📊 干预动作信息:")
                     if intervene_action is not None:
                         print(f"   Shape: {intervene_action.shape}")

@@ -60,8 +60,8 @@ def _convert_joints_to_eef_action(self, joint_positions: np.ndarray, obs: dict) 
 
 ```python
 # 🎯 修复：优先使用关节空间动作（A1X joint delta）
-if "intervene_action" in info:
-    actions = info["intervene_action"]  # A1X 关节空间 [7]（推荐）
+if "intervene_action_eef" in info:
+    actions = info["intervene_action_eef"]  # A1X 关节空间 [7]（推荐）
 elif "intervene_action_eef" in info:
     actions = info["intervene_action_eef"]  # EEF空间（备用）
 ```

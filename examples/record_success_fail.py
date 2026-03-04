@@ -40,8 +40,8 @@ def main(_):
     while len(successes) < success_needed:
         actions = np.zeros(env.action_space.sample().shape) 
         next_obs, rew, done, truncated, info = env.step(actions)
-        if "intervene_action" in info:
-            actions = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            actions = info["intervene_action_eef"]
             # print(actions)
 
         transition = copy.deepcopy(

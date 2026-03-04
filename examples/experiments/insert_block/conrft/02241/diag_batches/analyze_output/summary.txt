@@ -1,0 +1,20 @@
+Demo vs Online Batch Analysis Summary
+==================================================
+
+Demo batch: /home/dungeon_master/conrft/examples/experiments/insert_block/conrft/02241/diag_batches/demo_batch.pkl
+Online batch: /home/dungeon_master/conrft/examples/experiments/insert_block/conrft/02241/diag_batches/online_replay_batch.pkl
+Demo batch size: 128
+Online batch size: 256
+
+
+--- demo ---
+  actions: shape=(128, 7), min=-0.0010, max=0.0010, mean=-0.0001, std=0.0004
+  masks: done_rate=0.8%
+  mc_returns: min=0.0291, max=1.0000, mean=0.3517
+  rewards: min=0.0000, max=1.0000, mean=0.0078
+
+--- online ---
+  actions: shape=(256, 7), min=-0.0071, max=0.0092, mean=-0.0001, std=0.0010
+  masks: done_rate=0.4%
+  mc_returns: min=0.0236, max=1.0000, mean=0.3176
+  rewards: min=0.0000, max=1.0000, mean=0.0039

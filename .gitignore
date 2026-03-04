@@ -164,6 +164,9 @@ cython_debug/
 .ipynb_checkpoints/
 wandb
 *.png
+*.pth
+*.pt
+*.safetensors
 *.mp4
 *.pkl
 *.sif

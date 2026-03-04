@@ -401,7 +401,8 @@ class A1XRobot:
     # EEF control
     # ------------------------------------------------------------------
 
-    def command_eef_pose(self, eef_delta: np.ndarray, wait_for_completion: bool = True, timeout: float = 2.0) -> Optional[dict]:
+    def command_eef_pose(self, eef_delta: np.ndarray, wait_for_completion: bool = True,
+                         timeout: float = 2.0, pos_tolerance_m: float = 0.003) -> Optional[dict]:
         """Apply EEF delta [dx,dy,dz, drx,dry,drz, gripper_mm] via IK.
 
         When EE target is locked (via lock_ee_target), deltas accumulate
@@ -485,11 +486,45 @@ class A1XRobot:
         full_command = np.concatenate([joint_solution, [gripper_position]])
         self.command_joint_state(full_command, from_gello=False)
 
+        # ── 等待执行到位：直接监控 EEF XYZ 位置误差 ──────────────────────────
+        # 用 get_state_snapshot() 中的 ee_pos 与 target_pos 比较，
+        # 物理含义直接（mm 级），不受臂型/构型影响。
+        reached = False
+        final_error_m = float("inf")
+
+        if wait_for_completion:
+            pos_tolerance_m = pos_tolerance_m   # 使用传入的容差
+            poll_interval   = 0.01
+            start_wait      = time.time()
+
+            while time.time() - start_wait < timeout:
+                snap = self.get_state_snapshot()
+                if snap is None:
+                    time.sleep(poll_interval)
+                    continue
+
+                pos_error = float(np.linalg.norm(snap["ee_pos"] - target_pos))
+                final_error_m = pos_error
+
+                if pos_error < pos_tolerance_m:
+                    reached = True
+                    break
+
+                time.sleep(poll_interval)
+
+            if not reached:
+                print(
+                    f"[command_eef_pose] 超时: pos error={final_error_m*1000:.2f} mm "
+                    f"(tolerance=1.0 mm, timeout={timeout}s)"
+                )
+
         return {
-            "target_joints": joint_solution.tolist(),
-            "reached": True,
-            "final_error": 0.0,
-            "gripper": float(gripper_position),
+            "target_joints":  joint_solution.tolist(),
+            "target_pos":     target_pos.tolist(),
+            "reached":        reached,
+            "final_error_m":  final_error_m,
+            "final_error_mm": final_error_m * 1000,
+            "gripper":        float(gripper_position),
         }
 
     def command_eef_chunk(

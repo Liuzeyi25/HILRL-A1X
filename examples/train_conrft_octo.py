@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
+o#!/usr/bin/env python3
 
+import gc
 import glob
 import time
 import jax
@@ -34,6 +35,8 @@ from serl_launcher.utils.launcher import (
 from serl_launcher.data.data_store import MemoryEfficientReplayBufferDataStore
 
 from experiments.mappings import CONFIG_MAPPING
+from sampling_strategies import make_sampling_strategy
+from cov_actor_loss_diffusion import make_cov_policy_loss_fn_diffusion
 
 from octo.model.octo_model import OctoModel
 
@@ -52,7 +55,7 @@ flags.DEFINE_integer("eval_checkpoint_step", 0,
 flags.DEFINE_integer("eval_n_trajs", 20, "Number of trajectories to evaluate.")
 
 flags.DEFINE_float("gamma", 0.95, "return discount")
-flags.DEFINE_float("reward_neg", 0.0, "reward_neg for spase reward envs")
+flags.DEFINE_float("reward_neg", -1.0, "reward_neg for spase reward envs")
 flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
 flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
 flags.DEFINE_float("q_weight", 0.1, "q_weight ")
@@ -64,6 +67,40 @@ flags.DEFINE_boolean(
     "debug", False, "Debug mode."
 )  # debug mode will disable wandb logging
 
+flags.DEFINE_boolean(
+    "save_debug_pkl", False, "Save actor obs and learner batch to debug/ every 10 steps."
+)
+
+# ---- 采样策略 (none / workspace_filtering / random_drop / per) ----
+flags.DEFINE_string(
+    "sampling_strategy", "none",
+    "Sampling strategy for learner batches: none, workspace_filtering, random_drop, per.",
+)
+flags.DEFINE_string(
+    "sampling_strategy_kwargs", "",
+    'JSON-encoded kwargs for the sampling strategy, e.g. '
+    '\'{ "x_range": [0.2, 0.8], "drop_ratio": 0.15}\'.',
+)
+
+# ---- Diffusion-adapted Cov Actor Loss (entropy-bounded masking) ----
+flags.DEFINE_boolean(
+    "use_cov_actor_loss", False,
+    "Enable diffusion-adapted Cov Actor Loss (entropy-bounded masking using "
+    "denoising reconstruction loss as proxy log-prob).",
+)
+flags.DEFINE_integer(
+    "cov_K", 4,
+    "Number of MC action samples per state for cov estimation.",
+)
+flags.DEFINE_float(
+    "cov_q_low", 0.05,
+    "Lower quantile threshold for |c(s)| mask.",
+)
+flags.DEFINE_float(
+    "cov_q_high", 0.90,
+    "Upper quantile threshold for |c(s)| mask.",
+)
+
 
 devices = jax.local_devices()
 num_devices = len(devices)
@@ -72,6 +109,26 @@ sharding = jax.sharding.PositionalSharding(devices)
 
 def print_green(x):
     return print("\033[92m {}\033[00m".format(x))
+
+
+def print_banner(title: str, lines: list, color: str = "yellow") -> None:
+    """打印带边框的醒目横幅，用于确认关键配置已生效。
+
+    color: yellow | green | cyan | red
+    """
+    _codes = {"yellow": "\033[93m", "green": "\033[92m",
+               "cyan": "\033[96m", "red": "\033[91m"}
+    bold  = "\033[1m"
+    reset = "\033[00m"
+    c     = _codes.get(color, _codes["yellow"])
+    width = max(len(title), max((len(l) for l in lines), default=0)) + 4
+    border = "═" * width
+    print(f"\n{c}{bold}╔{border}╗")
+    print(f"║  {title:^{width - 2}}  ║")
+    print(f"╠{border}╣")
+    for line in lines:
+        print(f"║  {line:<{width - 2}}  ║")
+    print(f"╚{border}╝{reset}\n")
 
 
 def reorganize_transitions_to_chunks(transitions, chunk_size):
@@ -143,12 +200,13 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
     )
 
     client = None
-    # 🔍 网络通信监控
+    # 🔍 网络通信监控（使用 deque 限制最大长度，避免无限增长）
+    from collections import deque as _deque
     network_stats = {
-        "send_times": [],  # 统计发送耗时
+        "send_times": _deque(maxlen=200),  # 统计发送耗时，只保留最近200条
         "send_failures": 0,  # 发送失败次数
         "last_param_update": time.time(),  # 最后一次收到参数的时间
-        "param_update_intervals": [],  # 参数更新间隔
+        "param_update_intervals": _deque(maxlen=200),  # 参数更新间隔，只保留最近200条
     }
     
     if not is_eval_mode:
@@ -205,9 +263,6 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
     else:
         print_green("🎯 评估模式：跳过 learner 连接")
 
-    transitions = []
-    demo_transitions = []
-
     obs, _ = env.reset()
     done = False
 
@@ -218,6 +273,11 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
     intervention_count = 0
     intervention_steps = 0
     trajectory = []
+
+    # 🔍 Debug: 保存 actor obs，每10步保存一次（由 --save_debug_pkl 控制）
+    if FLAGS.save_debug_pkl:
+        _actor_debug_dir = os.path.join(os.getcwd(), "debug")
+        os.makedirs(_actor_debug_dir, exist_ok=True)
 
     pbar = tqdm.tqdm(range(start_step, config.max_steps), dynamic_ncols=True)
     for step in pbar:
@@ -235,9 +295,29 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                     argmax=False,
                 )
                 actions = np.asarray(jax.device_get(actions))
+                # 裁剪 action 到 action_space 范围内（从 env config 读取）
+                # actions = np.clip(actions, env.action_space.low, env.action_space.high)
+                # actions = actions * env.action_scale # haoyuan
                 # 🔍 Debug: 打印 action shape
                 if step % 100 == 0:
                     print_green(f"[Actor] Step {step}: actions shape = {actions.shape}")
+
+                # 🔍 Debug: 每10步保存 actor obs 到 debug 文件夹
+                if FLAGS.save_debug_pkl and step % 10 == 0:
+                    try:
+                        _obs_save = {}
+                        for k, v in obs.items():
+                            if hasattr(v, 'shape'):
+                                _obs_save[k] = np.asarray(v)
+                            else:
+                                _obs_save[k] = v
+                        _obs_save['_step'] = step
+                        _obs_save['_actions'] = actions
+                        with open(os.path.join(_actor_debug_dir, f"actor_obs_step{step}.pkl"), "wb") as f:
+                            pkl.dump(_obs_save, f)
+                        print_green(f"🔍 [Debug] Saved actor obs to {_actor_debug_dir}/actor_obs_step{step}.pkl")
+                    except Exception as e:
+                        print_green(f"🔍 [Debug] Failed to save actor obs: {e}")
 
         # Step environment
         with timer.context("step_env"):
@@ -261,8 +341,9 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
             # override the action with the intervention action
             if "intervene_action_eef" in info:
                 actions = info.pop("intervene_action_eef")  # 单步干预动作 (action_dim,)
-                # 干预时直接保存单步动作，在episode结束后统一重组
-                    
+                # 干预时直接保存单步动作，在episode结束后统一重组】
+                #Debug：dhy 打印actions
+                print_green(f"[Actor][intervene_action_eef] step={step} shape={actions.shape} values={np.round(actions, 4)}")
                 intervention_steps += 1
                 if not already_intervened:
                     intervention_count += 1
@@ -296,7 +377,46 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                                                           )
                 trajectory = add_next_embeddings_to_trajectory(trajectory)
                 
-                # 📦 检查是否需要重组：如果有任何单步动作，需要重组整个trajectory
+                # � 保存 mc_return 到文件
+                # if FLAGS.checkpoint_path:
+                #     mc_return_dir = os.path.join(FLAGS.checkpoint_path, "mc_returns")
+                #     os.makedirs(mc_return_dir, exist_ok=True)
+                    
+                #     # 提取 mc_return 数据
+                #     mc_returns = [t.get('mc_returns', None) for t in trajectory]
+                #     rewards = [t.get('rewards', None) for t in trajectory]
+                    
+                #     # 保存为文本文件（易读）
+                #     txt_path = os.path.join(mc_return_dir, f"mc_return_step{step}.txt")
+                #     with open(txt_path, 'w') as f:
+                #         f.write(f"Episode at step {step}\n")
+                #         f.write(f"Trajectory length: {len(trajectory)}\n")
+                #         f.write(f"Total return: {sum(rewards):.4f}\n")
+                #         f.write(f"Success: {info.get('succeed', 'N/A')}\n")
+                #         f.write("=" * 60 + "\n\n")
+                #         f.write(f"{'Timestep':<10} {'Reward':<12} {'MC Return':<12}\n")
+                #         f.write("-" * 60 + "\n")
+                #         for i, (r, mc) in enumerate(zip(rewards, mc_returns)):
+                #             f.write(f"{i:<10} {r:<12.4f} {mc if mc is not None else 'None':<12}\n")
+                    
+                #     # 保存为 pickle 文件（完整数据）
+                #     pkl_data = {
+                #         'step': step,
+                #         'trajectory_length': len(trajectory),
+                #         'mc_returns': mc_returns,
+                #         'rewards': rewards,
+                #         'total_return': sum(rewards),
+                #         'succeed': info.get('succeed', None),
+                #         'intervention_count': intervention_count,
+                #         'intervention_steps': intervention_steps,
+                #     }sf
+                #     pkl_path = os.path.join(mc_return_dir, f"mc_return_step{step}.pkl")
+                #     with open(pkl_path, 'wb') as f:
+                #         pkl.dump(pkl_data, f)
+                    
+                #     print_green(f"💾 [MC Return] Saved to {mc_return_dir}/mc_return_step{step}.[txt|pkl]")
+                
+                # 📦� 检查是否需要重组：如果有任何单步动作，需要重组整个trajectory
                 if hasattr(config, 'action_chunk_size') and config.action_chunk_size:
                     # 检查是否有单步动作（干预产生）
                     has_single_step = any(t['actions'].ndim == 1 for t in trajectory)
@@ -311,12 +431,31 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                     #     if step % 100 == 0:
                     #         print_green(f"✅ 重组chunk trajectory，填充最后几帧")
                 
+                episode_intvn = []
                 for transition in trajectory:
+                    ####Debug之前：写入data_store之前打印actions
+                    print_green(
+                        f"[Actor][pre-insert] step={step} "
+                        f"actions shape={transition['actions'].shape} "
+                        f"values={np.round(transition['actions'], 4)} "
+                        f"intervened={transition['intervened']}"
+                    )
                     data_store.insert(transition)
-                    transitions.append(copy.deepcopy(transition))
                     if transition['intervened']:
                         intvn_data_store.insert(transition)
-                        demo_transitions.append(copy.deepcopy(transition))
+                        episode_intvn.append(transition)
+
+                # 💾 每个 episode 结束后立即写 pkl，避免内存累积
+                if FLAGS.checkpoint_path and config.buffer_period > 0:
+                    buffer_path = os.path.join(FLAGS.checkpoint_path, "buffer")
+                    os.makedirs(buffer_path, exist_ok=True)
+                    with open(os.path.join(buffer_path, f"transitions_{step}.pkl"), "wb") as f:
+                        pkl.dump(trajectory, f)
+                    if episode_intvn:
+                        demo_buffer_path = os.path.join(FLAGS.checkpoint_path, "demo_buffer")
+                        os.makedirs(demo_buffer_path, exist_ok=True)
+                        with open(os.path.join(demo_buffer_path, f"transitions_{step}.pkl"), "wb") as f:
+                            pkl.dump(episode_intvn, f)
 
                 info["episode"]["intervention_count"] = intervention_count
                 info["episode"]["intervention_steps"] = intervention_steps
@@ -367,25 +506,10 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
                     client.update()
                 
                 trajectory = []
+                gc.collect()  # 立即归还图像/embedding 内存给 OS
                 obs, _ = env.reset()
 
-        if step > 0 and config.buffer_period > 0 and step % config.buffer_period == 0:
-            # dump to pickle file (transitions 已经在 episode 结束时重组过了)
-            buffer_path = os.path.join(FLAGS.checkpoint_path, "buffer")
-            demo_buffer_path = os.path.join(
-                FLAGS.checkpoint_path, "demo_buffer")
-            if not os.path.exists(buffer_path):
-                os.makedirs(buffer_path)
-            if not os.path.exists(demo_buffer_path):
-                os.makedirs(demo_buffer_path)
-            with open(os.path.join(buffer_path, f"transitions_{step}.pkl"), "wb") as f:
-                pkl.dump(transitions, f)
-                transitions = []
-            with open(
-                os.path.join(demo_buffer_path, f"transitions_{step}.pkl"), "wb"
-            ) as f:
-                pkl.dump(demo_transitions, f)
-                demo_transitions = []
+        # pkl 已在 episode 结束时按 episode 写入，无需按 buffer_period 批量 dump
 
         timer.tock("total")
 
@@ -462,7 +586,8 @@ def actor(tasks, agent, data_store, intvn_data_store, env, sampling_rng):
 ##############################################################################
 
 
-def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
+def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None,
+            sampling_strategy=None):
     """
     The learner loop, which runs when "--learner" is set to True.
     """
@@ -630,7 +755,7 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
 
             if (step > 0 and config.checkpoint_period and step % config.checkpoint_period == 0):
                 checkpoints.save_checkpoint(
-                    FLAGS.checkpoint_path, agent.state, step=step, keep=100)
+                    FLAGS.checkpoint_path, agent.state, step=step, keep=200)
 
         print_green("Pretraining done")
         return  # after pretraining, return and exit
@@ -672,6 +797,15 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
 
     # wait till the replay buffer is filled with enough data
     timer = Timer()
+    sampling_rng = jax.random.PRNGKey(42)
+
+    # 🔬 对齐诊断：只在第一个 train step 保存一次采样的 batch
+    _diag_batch_saved = False
+
+    # 🔍 Debug: 保存 learner sample batch，每10步保存一次（由 --save_debug_pkl 控制）
+    if FLAGS.save_debug_pkl:
+        _learner_debug_dir = os.path.join(os.getcwd(), "debug")
+        os.makedirs(_learner_debug_dir, exist_ok=True)
 
     # Start online training after offline pretraining
     online_start_step = FLAGS.pretrain_steps + \
@@ -683,12 +817,93 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
             with timer.context("sample_replay_buffer"):
                 batch = next(replay_iterator)
                 demo_batch = next(demo_iterator)
+
+                # 🔍 Debug: 每100步保存 learner sample batch 到 debug 文件夹（在合并前分别保存）
+                if FLAGS.save_debug_pkl and step % 100 == 0:
+                    try:
+                        def _serialize_batch(src_batch):
+                            """将 batch dict 递归转为可 pickle 的 numpy dict。"""
+                            out = {}
+                            for k, v in src_batch.items():
+                                if k == "tasks":
+                                    continue
+                                if hasattr(v, 'shape'):
+                                    out[k] = np.asarray(v)
+                                elif isinstance(v, dict):
+                                    out[k] = {
+                                        sk: np.asarray(sv) if hasattr(sv, 'shape') else sv
+                                        for sk, sv in v.items()
+                                    }
+                                else:
+                                    out[k] = v
+                            return out
+
+                        _batch_save = {
+                            '_step': step,
+                            '_critic_step': critic_step,
+                            'online_batch': _serialize_batch(batch),       # 合并前的 online replay 部分
+                            'demo_batch': _serialize_batch(demo_batch),    # 合并前的 demo 部分
+                        }
+
+                        # 🔍 统计干预数据（分别检查 online 和 demo）
+                        half_size = config.batch_size // 2
+                        _intervention_stats = {
+                            'online_size': half_size,
+                            'demo_size': half_size,
+                        }
+                        has_intervention_info = False
+
+                        if 'intervened' in batch:
+                            online_intervened_arr = np.asarray(batch['intervened'])
+                            online_intervened = int(np.sum(online_intervened_arr))
+                            _intervention_stats['online_has_intervened'] = True
+                            _intervention_stats['online_intervened_count'] = online_intervened
+                            _intervention_stats['online_intervened_ratio'] = online_intervened / half_size
+                            has_intervention_info = True
+                        else:
+                            _intervention_stats['online_has_intervened'] = False
+
+                        if 'intervened' in demo_batch:
+                            demo_intervened_arr = np.asarray(demo_batch['intervened'])
+                            demo_intervened = int(np.sum(demo_intervened_arr))
+                            _intervention_stats['demo_has_intervened'] = True
+                            _intervention_stats['demo_intervened_count'] = demo_intervened
+                            _intervention_stats['demo_intervened_ratio'] = demo_intervened / half_size
+                            has_intervention_info = True
+                        else:
+                            _intervention_stats['demo_has_intervened'] = False
+
+                        _batch_save['_intervention_stats'] = _intervention_stats
+
+                        if has_intervention_info:
+                            online_str = (f"intervened={_intervention_stats.get('online_intervened_count', 'N/A')}"
+                                          if _intervention_stats['online_has_intervened'] else "no intervened field")
+                            demo_str = (f"intervened={_intervention_stats.get('demo_intervened_count', 'N/A')}"
+                                        if _intervention_stats['demo_has_intervened'] else "no intervened field")
+                            print_green(
+                                f"🔍 [Debug] Batch composition: "
+                                f"online={half_size} ({online_str}), "
+                                f"demo={half_size} ({demo_str})"
+                            )
+
+                        with open(os.path.join(_learner_debug_dir, f"learner_sample_batch_step{step}.pkl"), "wb") as f:
+                            pkl.dump(_batch_save, f)
+                        print_green(f"🔍 [Debug] Saved learner sample batch to {_learner_debug_dir}/learner_sample_batch_step{step}.pkl")
+                    except Exception as e:
+                        print_green(f"🔍 [Debug] Failed to save learner sample batch: {e}")
+
                 batch = concat_batches(batch, demo_batch, axis=0)
+
+                # ---- 采样策略过滤 ----
+                if sampling_strategy is not None:
+                    sampling_rng, _key = jax.random.split(sampling_rng)
+                    batch = sampling_strategy.apply(batch, _key, agent=agent)
 
                 batch = {
                     **batch,
                     "tasks": create_batch_tasks(tasks, config.batch_size),
                 }
+
             batch = frozen_dict.freeze(batch)
 
             with timer.context("train_critics"):
@@ -699,6 +914,38 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
             batch = next(replay_iterator)
             demo_batch = next(demo_iterator)
             batch = concat_batches(batch, demo_batch, axis=0)
+
+            # ---- 采样策略过滤 ----
+            if sampling_strategy is not None:
+                sampling_rng, _key = jax.random.split(sampling_rng)
+                batch = sampling_strategy.apply(batch, _key, agent=agent)
+
+            # 🔬 对齐诊断：第一次 train step 时保存 replay 和 demo 的原始 batch
+            if not _diag_batch_saved and FLAGS.checkpoint_path:
+                try:
+                    diag_dir = os.path.join(FLAGS.checkpoint_path, "diag_batches")
+                    os.makedirs(diag_dir, exist_ok=True)
+                    # 保存 online replay batch（可能混有干预样本 intervened=True）
+                    _replay_save = {
+                        k: np.asarray(v) if hasattr(v, 'shape') else v
+                        for k, v in batch.items()
+                        if k not in ('tasks', 'embeddings', 'next_embeddings')
+                    }
+                    with open(os.path.join(diag_dir, "online_replay_batch.pkl"), "wb") as f:
+                        pkl.dump(_replay_save, f)
+                    # 保存 demo batch
+                    _demo_save = {
+                        k: np.asarray(v) if hasattr(v, 'shape') else v
+                        for k, v in demo_batch.items()
+                        if k not in ('tasks', 'embeddings', 'next_embeddings')
+                    }
+                    with open(os.path.join(diag_dir, "demo_batch.pkl"), "wb") as f:
+                        pkl.dump(_demo_save, f)
+                    print_green(f"🔬 [Diag] Saved alignment batch to {diag_dir}")
+                    _diag_batch_saved = True
+                except Exception as e:
+                    print_green(f"🔬 [Diag] Failed to save batch: {e}")
+
             batch = {
                 **batch,
                 "tasks": create_batch_tasks(tasks, config.batch_size),
@@ -706,6 +953,15 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
             # 🔍 Debug: 打印 batch action shape
             if step % 100 == 0:
                 print_green(f"[Learner] Step {step}: batch['actions'] shape = {batch['actions'].shape}")
+                ##Debug: dhy learner读取batch之后打印actions的数值分布，检查是否合理
+                _actions_np = np.asarray(batch['actions'])
+                print_green(
+                    f"[Learner][batch actions] step={step} "
+                    f"shape={_actions_np.shape} "
+                    f"min={_actions_np.min():.4f} max={_actions_np.max():.4f} "
+                    f"mean={_actions_np.mean():.4f}\n"
+                    f"  sample[0]={np.round(_actions_np[0], 4)}"
+                )
             batch = frozen_dict.freeze(batch)
             agent, update_info = agent.update_ql(
                 batch, networks_to_update=train_networks_to_update,)
@@ -755,7 +1011,7 @@ def learner(rng, tasks, agent, replay_buffer, demo_buffer, wandb_logger=None):
 
         if (step > 0 and config.checkpoint_period and step % config.checkpoint_period == 0):
             checkpoints.save_checkpoint(
-                FLAGS.checkpoint_path, agent.state, step=step, keep=100)
+                FLAGS.checkpoint_path, agent.state, step=step, keep=200)
 
 
 ##############################################################################
@@ -833,6 +1089,30 @@ def main(_):
         include_mc_returns = True
     else:
         raise NotImplementedError(f"Unknown setup mode: {config.setup_mode}")
+
+    # ---- 注入 Cov Actor Loss 配置到 agent.config ----
+    if FLAGS.use_cov_actor_loss:
+        agent = agent.replace(
+            config={
+                **agent.config,
+                "use_cov_actor_loss": True,
+                "cov_K": FLAGS.cov_K,
+                "cov_q_low": FLAGS.cov_q_low,
+                "cov_q_high": FLAGS.cov_q_high,
+                "_cov_fn_factory": make_cov_policy_loss_fn_diffusion,
+            }
+        )
+        print_banner(
+            "🔬 Diffusion-adapted Cov Actor Loss ENABLED",
+            [
+                f"K (MC samples)  = {FLAGS.cov_K}",
+                f"q_low           = {FLAGS.cov_q_low}",
+                f"q_high          = {FLAGS.cov_q_high}",
+                f"sigma_eval      = agent.config['sigma_min']",
+                "proxy log-prob  = -||f_θ(a+σε,σ|s) - a||²",
+            ],
+            color="cyan",
+        )
 
     # replicate agent across devices
     # need the jnp.array to avoid a bug where device_put doesn't recognize primitives
@@ -935,6 +1215,22 @@ def main(_):
             print_green(
                 f"Loaded previous demo buffer data. Demo buffer size: {len(demo_buffer)}")
 
+        # ---- 构建采样策略 ----
+        import json as _json
+        _ss_kwargs = _json.loads(FLAGS.sampling_strategy_kwargs) if FLAGS.sampling_strategy_kwargs else {}
+        _sampling_strategy = make_sampling_strategy(FLAGS.sampling_strategy, **_ss_kwargs)
+        if FLAGS.sampling_strategy == "none":
+            print_green(f"sampling strategy: none (no filtering)")
+        else:
+            print_banner(
+                "[ACTIVE] SAMPLING STRATEGY",
+                [
+                    f"strategy  = {FLAGS.sampling_strategy}",
+                    f"kwargs    = {_ss_kwargs if _ss_kwargs else '(default)'}",
+                ],
+                color="yellow",
+            )
+
         # learner loop
         print_green("starting learner loop")
         learner(sampling_rng,
@@ -943,12 +1239,15 @@ def main(_):
                 replay_buffer,
                 demo_buffer=demo_buffer,
                 wandb_logger=wandb_logger,
+                sampling_strategy=_sampling_strategy,
                 )
 
     elif FLAGS.actor:
         sampling_rng = jax.device_put(sampling_rng, sharding.replicate())
-        data_store = QueuedDataStore(50000)  # the queue size on the actor
-        intvn_data_store = QueuedDataStore(50000)
+        # 容量不宜过大：每条 transition 含图像，50000 条会占 20-80GB RAM
+        # client.update() 每个 episode 结束即同步，2000 足以缓冲 3-4 个 episode
+        data_store = QueuedDataStore(20000)
+        intvn_data_store = QueuedDataStore(20000)
 
         # actor loop
         print_green("starting actor loop")

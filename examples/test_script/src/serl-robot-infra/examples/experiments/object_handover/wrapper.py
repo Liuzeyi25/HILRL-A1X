@@ -144,8 +144,8 @@ class GripperPenaltyWrapper(gym.Wrapper):
     def step(self, action):
         """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
 
         info["grasp_penalty"] = 0.0
 

@@ -5,8 +5,9 @@
 
 用法:
 python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
-  --demo_path=/home/dungeon_master/conrft/examples/experiments/toast_bread/demo_data/20260218/traj_001_2026-02-19_14-33-33.pkl \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/press_button/demo_data/20260229/traj_003_2026-02-28_17-14-48.pkl\
   --show_first_frame \
+  --action_scale=0.005,0.005,0.005,0,0,0,0 \
   --detailed  # 可选: 显示详细的递归结构分析
 """
 
@@ -30,6 +31,12 @@ flags.DEFINE_string("exp_name", None, "Name of experiment.")
 flags.DEFINE_bool("detailed", False, "Show detailed recursive structure analysis.")
 flags.DEFINE_bool("save_first_frame", False, "Save first frame images to disk.")
 flags.DEFINE_bool("show_first_frame", False, "Display first frame images.")
+flags.DEFINE_string(
+    "action_scale", None,
+    "Action scale applied in the environment: single float (e.g. '0.005') or "
+    "comma-separated per-dim values (e.g. '0.005,0.005,0.005,0,0,0,0'). "
+    "Used to convert raw action → expected Δstate for alignment analysis."
+)
 
 def print_section(title):
     """打印分隔线和标题"""
@@ -825,74 +832,235 @@ def analyze_demo_data(demo_paths):
     return actions, rewards
 
 
-def estimate_bc_loss_scale(actions, sigma_max=80.0, sigma_data=0.5):
-    """估计初始 BC Loss 的尺度"""
-    print_section("BC Loss 尺度估计")
+def analyze_state_action_alignment(demo_paths, action_scale=None):
+    """分析 state 与 action 的对齐情况
     
-    print(f"使用参数:")
-    print(f"  sigma_max = {sigma_max}")
-    print(f"  sigma_data = {sigma_data}")
-    print()
+    核心逻辑:
+      - action[t] 经过 ACTION_SCALE 缩放后才是实际施加的增量
+      - 对于 delta 控制: action[t] * action_scale ≈ next_state[t] - state[t]
+      - 对于 absolute 控制: action[t] * action_scale ≈ next_state[t]
+      - 通过逐帧对比及相关系数判断数据是否对齐
     
-    # 🎯 处理 chunked actions
-    if actions.ndim == 3:
-        print(f"检测到 chunked actions，展平用于估计: {actions.shape}")
-        actions = actions.reshape(-1, actions.shape[-1])
-        print(f"展平后: {actions.shape}")
+    Args:
+        demo_paths: demo 文件路径列表
+        action_scale: None / float / np.ndarray, 对应环境中的 ACTION_SCALE
+    """
+    print_section("State-Action 对齐分析")
+
+    for path in demo_paths:
+        print(f"\n{'='*70}")
+        print(f"文件: {path}")
+        print(f"{'='*70}")
+
+        with open(path, "rb") as f:
+            traj = pkl.load(f)
+
+        if len(traj) < 2:
+            print("   ⚠️ 帧数不足，跳过")
+            continue
+
+        # ---- 打印第 45 帧（索引 44）的 observations / actions / next_observations 具体数值 ----
+        target_frame_idx = 44
+        print(f"\n{'='*70}")
+        print(f"🔍 第 {target_frame_idx + 1} 帧（索引 {target_frame_idx}）具体数值")
+        print(f"{'='*70}")
+        if target_frame_idx < len(traj):
+            f44 = traj[target_frame_idx]
+
+            def _print_obs_values(obs_dict, label):
+                print(f"\n  [{label}]")
+                if not isinstance(obs_dict, dict):
+                    print(f"    {obs_dict}")
+                    return
+                for k, v in obs_dict.items():
+                    v_arr = np.asarray(v) if hasattr(v, '__iter__') and not isinstance(v, str) else v
+                    if isinstance(v_arr, np.ndarray) and v_arr.ndim >= 3:
+                        # 跳过图像数据（3维及以上的数组）
+                        print(f"    '{k}' shape={v_arr.shape} dtype={v_arr.dtype}  [图像，已跳过]")
+                        continue
+                    if isinstance(v_arr, np.ndarray):
+                        print(f"    '{k}' shape={v_arr.shape} dtype={v_arr.dtype}")
+                        print(f"         值: {v_arr}")
+                    else:
+                        print(f"    '{k}': {v_arr}")
+
+            # observations
+            _print_obs_values(f44.get("observations", {}), "observations")
+
+            # actions
+            act = f44.get("actions", None)
+            print(f"\n  [actions]")
+            if act is not None:
+                act_arr = np.asarray(act)
+                print(f"    shape={act_arr.shape} dtype={act_arr.dtype}")
+                print(f"    值: {act_arr}")
+            else:
+                print("    ❌ 不存在")
+
+            # next_observations
+            _print_obs_values(f44.get("next_observations", {}), "next_observations")
+        else:
+            print(f"⚠️  轨迹只有 {len(traj)} 帧，不存在第 {target_frame_idx + 1} 帧")
+        print(f"\n{'='*70}\n")
+
+        # ---- 提取 state 和 action ----
+        # next_observations["state"] 形状为 [2, state_dim]：
+        #   [0] = t 时刻的 state
+        #   [1] = t+1 时刻的 state
+        states, next_states, actions = [], [], []
+        for i, frame in enumerate(traj):
+            nobs = frame.get("next_observations", {})
+            act = frame.get("actions", None)
+
+            ns_state = nobs.get("state", None) if isinstance(nobs, dict) else None
+
+            if ns_state is None or act is None:
+                continue
+
+            ns_arr_raw = np.asarray(ns_state, dtype=np.float64)
+            if ns_arr_raw.ndim == 2 and ns_arr_raw.shape[0] == 2:
+                # [2, state_dim]: index 0 = s_t, index 1 = s_{t+1}
+                s_t  = ns_arr_raw[0]
+                s_t1 = ns_arr_raw[1]
+            else:
+                # 兜底：无法拆分，跳过
+                continue
+
+            act_arr = np.asarray(act, dtype=np.float64)
+            act_vec = act_arr.flatten() if act_arr.ndim == 1 else act_arr[0].flatten()  # chunked 取第一步
+
+            states.append(s_t)
+            next_states.append(s_t1)
+            actions.append(act_vec)
+
+        if len(states) == 0:
+            print("   ⚠️ 未找到 next_obs state 或 action 数据，跳过")
+            continue
+
+        states_arr = np.array(states)       # [N, state_dim]
+        actions_arr = np.array(actions)     # [N, action_dim]
+
+        state_dim = states_arr.shape[-1]
+        action_dim = actions_arr.shape[-1]
+
+        print(f"\n📐 维度信息:")
+        print(f"   state_dim  = {state_dim}")
+        print(f"   action_dim = {action_dim}")
+
+        # ---- 构建 action_scale 向量 ----
+        if action_scale is None:
+            scale_vec = np.ones(action_dim)
+            scale_label = "无缩放 (raw action)"
+        else:
+            scale_arr = np.asarray(action_scale, dtype=np.float64).flatten()
+            if scale_arr.size == 1:
+                scale_vec = np.full(action_dim, scale_arr[0])
+            elif scale_arr.size == action_dim:
+                scale_vec = scale_arr
+            else:
+                # 长度不匹配: 截断或补1
+                scale_vec = np.ones(action_dim)
+                n = min(scale_arr.size, action_dim)
+                scale_vec[:n] = scale_arr[:n]
+                print(f"   ⚠️  action_scale 长度({scale_arr.size}) ≠ action_dim({action_dim})，"
+                      f"已对齐前 {n} 维，其余置 1")
+            scale_label = f"已缩放 (×{scale_vec})"
+
+        print(f"   action_scale: {scale_label}")
+
+        # ---- 计算 state diff（next_states 全部有效，直接使用）----
+        ns_arr = np.array(next_states)   # [M, state_dim]
+        s_arr  = states_arr              # [M, state_dim]
+        a_arr  = actions_arr             # [M, action_dim]
+
+        # 缩放后的 action（与环境实际增量量纲一致）
+        a_scaled = a_arr * scale_vec[np.newaxis, :]  # [M, action_dim]
+
+        state_diff = ns_arr - s_arr   # [M, state_dim]
+
+        # ---- 逐帧对比（前10帧） ----
         print()
-    
-    # 模拟噪声过程
-    batch_size = min(256, len(actions))
-    batch_actions = actions[:batch_size]
-    
-    # 采样最大噪声 (worst case)
-    t = sigma_max
-    noise = np.random.randn(*batch_actions.shape)
-    x_t = batch_actions + noise * t
-    
-    # 假设模型初始预测为 0 (随机初始化)
-    distiller = np.zeros_like(batch_actions)
-    
-    # 计算 MSE
-    recon_diffs = (distiller - batch_actions) ** 2
-    mean_recon_diffs = np.mean(recon_diffs, axis=-1)
-    
-    # 计算权重 (Karras weighting)
-    snr = 1.0 / (t ** 2)
-    weight = snr + 1.0 / (sigma_data ** 2)
-    
-    # BC Loss
-    bc_loss = np.mean(mean_recon_diffs * weight)
-    
-    print(f"初始 BC Loss 估计 (worst case, t=sigma_max):")
-    print(f"  重建误差 (MSE): {np.mean(recon_diffs):.4f}")
-    print(f"  SNR: {snr:.6f}")
-    print(f"  Weight: {weight:.4f}")
-    print(f"  Weighted BC Loss: {bc_loss:.4f}")
-    print()
-    
-    # 不同 t 值的估计
-    print("不同噪声水平下的 BC Loss 估计:")
-    t_values = [0.02, 0.5, 1.0, 5.0, 10.0, 20.0, 80.0]
-    for t in t_values:
-        snr = 1.0 / (t ** 2)
-        weight = snr + 1.0 / (sigma_data ** 2)
-        # 假设模型完全随机,预测误差约等于动作方差
-        estimated_mse = np.var(batch_actions, axis=0).mean()
-        estimated_bc_loss = estimated_mse * weight
-        print(f"  t={t:6.2f}: SNR={snr:10.4f}, weight={weight:10.4f}, est_loss={estimated_bc_loss:10.4f}")
-    
-    print()
-    print("💡 建议:")
-    if bc_loss > 100:
-        print("  ❌ 初始 BC Loss 过大 (>100)")
-        print("  建议 1: 降低 sigma_max (例如从 80.0 到 5.0)")
-        print("  建议 2: 实现动作归一化到 [-1, 1]")
-    elif bc_loss > 10:
-        print("  ⚠️  初始 BC Loss 较大 (>10)")
-        print("  建议: 考虑降低 sigma_max 或归一化动作")
-    else:
-        print("  ✅ 初始 BC Loss 在合理范围内")
+        compare_dim = min(state_dim, action_dim)
+        has_scale = not np.allclose(scale_vec, 1.0)
+        print(f"🔍 逐帧对比 (前 10 帧, {'scaled action' if has_scale else 'raw action'} vs Δstate):")
+
+        col_w = 13
+        header_sd = "  ".join([f"Δstate[{d}]".rjust(col_w) for d in range(compare_dim)])
+        header_ac = "  ".join([(f"a*s[{d}]" if has_scale else f"action[{d}]").rjust(col_w)
+                                for d in range(compare_dim)])
+        sep = "-" * (7 + compare_dim * (col_w + 2))
+        print(f"  {'Frame':>5}  {header_sd}")
+        print(f"  {'':>5}  {header_ac}")
+        print("  " + sep)
+
+        num_show = len(state_diff)
+        for i in range(num_show):
+            sd = state_diff[i, :compare_dim]
+            ac = a_scaled[i, :compare_dim]
+            row_sd = "  ".join([f"{v:>{col_w}.5f}" for v in sd])
+            row_ac = "  ".join([f"{v:>{col_w}.5f}" for v in ac])
+            print(f"  {i:>5}  {row_sd}   ← Δstate")
+            print(f"  {'':>5}  {row_ac}   ← {'action×scale' if has_scale else 'action'}")
+            print()
+
+        # ---- 相关系数分析（仅当维度匹配时，跳过 scale=0 的维度）----
+        if state_dim == action_dim:
+            print("📊 各维度 Pearson 相关系数 (scaled_action vs Δstate):")
+            corrs = []
+            for d in range(state_dim):
+                sd_col = state_diff[:, d]
+                ac_col = a_scaled[:, d]
+                scale_d = scale_vec[d] if d < len(scale_vec) else 1.0
+                if scale_d == 0.0:
+                    corrs.append(float('nan'))
+                    print(f"   dim {d:2d}: ⏭️  scale=0，该维度被环境忽略，跳过")
+                elif np.std(sd_col) < 1e-9 or np.std(ac_col) < 1e-9:
+                    corrs.append(float('nan'))
+                    print(f"   dim {d:2d}: ⚠️  方差近零，无法计算（scale={scale_d}）")
+                else:
+                    corr = np.corrcoef(sd_col, ac_col)[0, 1]
+                    corrs.append(corr)
+                    flag = "✅" if abs(corr) > 0.7 else ("⚠️ " if abs(corr) > 0.3 else "❌")
+                    print(f"   dim {d:2d}: {flag} corr = {corr:+.4f}  (scale={scale_d})")
+
+            valid_corrs = [c for c in corrs if not np.isnan(c)]
+            if valid_corrs:
+                mean_corr = np.mean(np.abs(valid_corrs))
+                print(f"\n   平均 |corr| (忽略 scale=0 维度): {mean_corr:.4f}")
+                if mean_corr > 0.7:
+                    print("   ✅ 整体对齐良好 → scaled_action 与 Δstate 强相关")
+                elif mean_corr > 0.3:
+                    print("   ⚠️  对齐一般 → 可能是 absolute 控制，或存在时序偏移")
+                else:
+                    print("   ❌ 对齐差 → scaled_action 与 Δstate 几乎不相关，")
+                    print("      请检查: 1) 时序偏移  2) absolute vs delta  3) 坐标系差异")
+            else:
+                print("   ⚠️  所有维度均被跳过（全部 scale=0 或方差为零）")
+        else:
+            print(f"   ⚠️  state_dim({state_dim}) ≠ action_dim({action_dim})，")
+            print("       跳过相关系数分析（维度不一致，可能是关节空间 action + 末端 state）")
+
+        # ---- action magnitude vs state diff magnitude ----
+        print()
+        act_label = "‖a×scale‖" if has_scale else "‖action‖"
+        print(f"📏 幅值对比 (全部帧):")
+        print(f"  {'Frame':>5}  {'‖Δstate‖':>12}  {act_label:>12}  {'ratio':>8}")
+        print("  " + "-" * 44)
+        for i in range(len(state_diff)):
+            norm_diff = np.linalg.norm(state_diff[i])
+            norm_act  = np.linalg.norm(a_scaled[i])
+            ratio = norm_act / norm_diff if norm_diff > 1e-9 else float('inf')
+            print(f"  {i:>5}  {norm_diff:>12.6f}  {norm_act:>12.6f}  {ratio:>8.3f}")
+
+        # ---- 全局幅值统计 ----
+        print()
+        norm_diffs = np.linalg.norm(state_diff, axis=-1)  # [M]
+        norm_acts  = np.linalg.norm(a_scaled, axis=-1)     # [M]
+        print("📈 全局幅值统计:")
+        print(f"   ‖Δstate‖    mean={np.mean(norm_diffs):.6f}, std={np.std(norm_diffs):.6f}, "
+              f"max={np.max(norm_diffs):.6f}")
+        print(f"   {act_label:<12} mean={np.mean(norm_acts):.6f}, std={np.std(norm_acts):.6f}, "
+              f"max={np.max(norm_acts):.6f}")
 
 
 def analyze_config(exp_name):
@@ -956,43 +1124,33 @@ def main(_):
     
     # 分析 demo 数据
     actions, rewards = analyze_demo_data(FLAGS.demo_path)
-    
-    # 估计 BC Loss 尺度
-    if actions is not None and len(actions) > 0:
-        estimate_bc_loss_scale(actions, sigma_max=80.0, sigma_data=0.5)
-        
-        print()
-        print_section("尝试不同的 sigma_max 值")
-        for sigma_max in [5.0, 10.0, 20.0]:
-            print(f"\n--- sigma_max = {sigma_max} ---")
-            estimate_bc_loss_scale(actions, sigma_max=sigma_max, sigma_data=0.5)
-    
+
+    # 解析 action_scale
+    action_scale = None
+    if FLAGS.action_scale is not None:
+        try:
+            parts = [float(x.strip()) for x in FLAGS.action_scale.split(",")]
+            action_scale = np.array(parts) if len(parts) > 1 else parts[0]
+            print(f"\n📏 使用 action_scale = {action_scale}")
+        except ValueError:
+            print(f"\n⚠️  无法解析 --action_scale='{FLAGS.action_scale}'，使用无缩放")
+
+    # State-Action 对齐分析
+    analyze_state_action_alignment(FLAGS.demo_path, action_scale=action_scale)
+
     # 总结建议
     print_section("总结与建议")
     print("""
-1. 检查动作空间尺度:
-   - 如果不同维度范围差异 >10x，需要归一化
-   - 推荐归一化到 [-1, 1]
-
-2. 调整 diffusion 参数:
-   - 如果动作未归一化: sigma_max = 5-10
-   - 如果动作已归一化到 [-1,1]: sigma_max = 1-3
+1. State-Action 对齐判断:
+   - 若各维度 corr > 0.7 → action 是 delta 控制，与 Δstate 强对应
+   - 若 corr 较低但幅值比 ratio ≈ 1 → 可能是 absolute 控制
+   - 若 corr 极低且 ratio 差异大 → 检查时序偏移或坐标系问题
 
 3. 检查数据完整性:
    - 必须包含: embeddings, next_embeddings
    - 推荐包含: mc_returns
 
-4. 监控训练:
-   - 初始 BC loss 应该 <50 (理想 <10)
-   - BC loss 应该在前 100 步内开始下降
-   - 如果 loss 爆炸或 NaN，立即检查数据归一化
-
-5. 下一步:
-   - 实现动作归一化 wrapper
-   - 或降低 sigma_max 参数
-   - 添加训练监控脚本
-
-6. 使用 --detailed 标志查看完整的数据结构分析
+4. 使用 --detailed 标志查看完整的数据结构分析
     """)
 
 if __name__ == "__main__":

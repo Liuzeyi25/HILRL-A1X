@@ -73,7 +73,7 @@ def test_gello_intervention_wrapper():
         action = np.zeros(env.action_space.sample().shape)
         obs, rew, done, truncated, info = env.step(action)
         
-        if "intervene_action" in info:
+        if "intervene_action_eef" in info:
             print(f"   ✋ 检测到 Gello 介入")
             print(f"   - 介入动作: {info['intervene_action'][:3]}...")
         else:

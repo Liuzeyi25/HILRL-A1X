@@ -95,7 +95,7 @@ for _ in range(100):
     obs, reward, done, truncated, info = env.step(action)
     
     # 如果检测到人类介入
-    if "intervene_action" in info:
+    if "intervene_action_eef" in info:
         print("人类正在控制机器人！")
 ```
 

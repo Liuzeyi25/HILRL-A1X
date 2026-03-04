@@ -113,7 +113,7 @@ class A1XRobotZMQNode(Node):
             self._current_end_effector_pose = {
                 'position': {'x': msg.pose.position.x, 'y': msg.pose.position.y, 'z': msg.pose.position.z},
                 'orientation': {'x': msg.pose.orientation.x, 'y': msg.pose.orientation.y, 
-                              'z': msg.pose.orientation.z, 'w': msg.pose.orientation.w}
+                                'z': msg.pose.orientation.z, 'w': msg.pose.orientation.w}
             }
     
     # haoyuan add 

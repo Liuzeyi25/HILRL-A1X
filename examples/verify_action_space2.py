@@ -169,7 +169,7 @@ def main():
                     print(f"{'─'*70}")
                     
                     # In new architecture, agent generates actions internally
-                    # We can't directly see "intervene_action" like before
+                    # We can't directly see "intervene_action_eef" like before
                     # Instead, the action is already applied in env.step()
                     
                     print(f"� 干预信息:")

@@ -224,7 +224,7 @@ for episode in range(FLAGS.eval_n_trajs):
 # 训练模式（可能有干预）
 info = {
     "gello_intervened": True/False,
-    "intervene_action": [...],           # 如果有干预
+    "intervene_action_eef": [...],           # 如果有干预
     "intervene_action_eef": [...],       # 如果有干预
     "succeed": True/False,
     # eval_mode 不存在

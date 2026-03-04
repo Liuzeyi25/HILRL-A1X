@@ -112,8 +112,8 @@ class GripperPenaltyWrapper(gym.Wrapper):
         action[..., -1] = grasp_action
         
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
 
         if (action[-1] < -0.5 and self.last_gripper_pos > 0.7) or (
             action[-1] > 0.5 and self.last_gripper_pos < 0.7

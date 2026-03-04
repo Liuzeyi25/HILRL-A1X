@@ -131,8 +131,8 @@ class A1XGripperPenaltyWrapper(gym.Wrapper):
         observation, reward, terminated, truncated, info = self.env.step(action)
         
         # 检查是否有人工干预
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
             gripper_action = action[..., -1]
         
         # 计算夹爪变化惩罚

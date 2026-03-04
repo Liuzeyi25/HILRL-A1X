@@ -137,7 +137,7 @@ obs, _ = env.reset()  # Gello会自动跟随机械臂到reset位置
 
 # Step: Gello → Robot (遥控)
 obs, rew, done, _, info = env.step(action)
-if "intervene_action" in info:
+if "intervene_action_eef" in info:
     print("Gello 正在控制机器人")
 ```
 

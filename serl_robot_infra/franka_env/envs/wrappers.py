@@ -449,8 +449,8 @@ class GripperCloseEnv(gym.ActionWrapper):
     def step(self, action):
         new_action = self.action(action)
         obs, rew, done, truncated, info = self.env.step(new_action)
-        if "intervene_action" in info:
-            info["intervene_action"] = info["intervene_action"][:6]
+        if "intervene_action_eef" in info:
+            info["intervene_action_eef"] = info["intervene_action_eef"][:6]
         return obs, rew, done, truncated, info
     
     def reset(self, **kwargs):
@@ -467,17 +467,42 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         self.action_space = gym.spaces.Box(
             low=np.array([
-                -0.005, -0.005, -0.005,   # 前三维
+                -0.002, -0.002, -0.002,   # 前三维
                 -0.01, -0.05, -0.01,  # 第4-6维
                 -0.2                # 最后一维
             ], dtype=np.float32),
             high=np.array([
-                0.005,  0.005,  0.005,
+                0.002,  0.002,  0.002,
                 0.01, 0.05, 0.01,
                 0.2
             ], dtype=np.float32),
             dtype=np.float32
         )
+        cfg_space = None
+        if hasattr(env, "config") and getattr(env.config, "ACTION_SPACE", None) is not None:
+            cfg_space = env.config.ACTION_SPACE
+### ###以下均为调试打印所需
+            try:
+                space_str = np.array2string(cfg_space, precision=6)
+            except Exception:
+                space_str = repr(cfg_space)
+            HIGHLIGHT = "\033[1;30;43m"  # 黑字，黄色背景
+            RESET = "\033[0m"
+            print("\n" + "=" * 80)
+            print(f"{HIGHLIGHT} 🎮 [SpacemouseIntervention] Using action space from env.config.ACTION_SPACE: {space_str} {RESET}")
+            print("=" * 80)
+        elif hasattr(env, "action_space"):
+            cfg_space = env.action_space
+
+        if cfg_space is not None:
+            self.action_space = cfg_space
+        else:
+            # 兜底默认（与原来保持一致）
+            self.action_space = gym.spaces.Box(
+                low=np.array([-0.002, -0.002, -0.002, -0.01, -0.05, -0.01, -0.2], dtype=np.float32),
+                high=np.array([0.002, 0.002, 0.002, 0.01, 0.05, 0.01, 0.2], dtype=np.float32),
+                dtype=np.float32,
+            )
         
         self.action_scale = env.action_scale
 
@@ -534,7 +559,7 @@ class SpacemouseIntervention(gym.ActionWrapper):
         rot_norm = np.linalg.norm(expert_a[3:6])  # 旋转死区
         
         # 只要位置或旋转有一个超过阈值就认为有干预
-        if pos_norm > 0.001 or rot_norm > 0.001:  # 旋转阈值更小 (0.005 rad ≈ 0.3°)
+        if pos_norm > 0.0001 or rot_norm > 0.0001:  # 旋转阈值更小 (0.005 rad ≈ 0.3°)
             intervened = True
         else:
             # 🔍 定期打印死区内的 SpaceMouse 读数（诊断漂移）
@@ -546,10 +571,13 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         if self.gripper_enabled:
             if self.left:  # close gripper
-                gripper_action = np.random.uniform(-0.2, -0.15, size=(1,))
+                # 🔧 修复：输出 -1.0 而非 ~-0.175，与 DQN grasp_critic 的
+                # jnp.round() 约定匹配，避免 demo 夹爪动作全被 round 成 0
+                gripper_action = np.array([-1.0])
                 intervened = True
             elif self.right:  # open gripper
-                gripper_action = np.random.uniform(0.15, 0.2, size=(1,))
+
+                gripper_action = np.array([1.0])
                 intervened = True
             else:
                 gripper_action = np.zeros((1,))
@@ -563,8 +591,9 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         if intervened:
             # 🔧 裁剪到动作空间范围内
+            # 注意：不再乘 action_scale，因为 env.step() 会统一做缩放
+            # 空间鼠标原始输出已经在 [-1, 1] 范围，与 ACTION_SPACE 匹配
             expert_a = np.clip(expert_a, self.action_space.low, self.action_space.high)
-            expert_a = expert_a * self.action_scale
             # print("[SpaceMouse] Intervention detected: using expert action,", expert_a)
             return expert_a, True
 
@@ -576,7 +605,19 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action_eef"] = new_action
+            info["intervene_action_eef"] = new_action # 记录实际施加的动作（缩放后）
+            # 当 action_scale 某维度为 0 时，对应的干预动作维度也置 0
+            _scale = np.asarray(self.action_scale)
+            if _scale.ndim == 0:
+                # 标量情况：若 scale==0 则整个动作置 0
+                if _scale == 0:
+                    info["intervene_action_eef"] = np.zeros_like(info["intervene_action_eef"])
+            else:
+                _zero_mask = (_scale == 0)
+                if _zero_mask.any():
+                    _act = info["intervene_action_eef"].copy()
+                    _act[:len(_zero_mask)][_zero_mask[:len(_act)]] = 0.0
+                    info["intervene_action_eef"] = _act
         info["left"] = self.left
         info["right"] = self.right
         
@@ -591,7 +632,7 @@ class SpacemouseIntervention(gym.ActionWrapper):
         
         # 🎯 检查手动失败标志
         elif self.manual_failure_flag:
-            rew = -1.0
+            rew = 0
             done = True
             info['succeed'] = False
             info['manual_failure'] = True
@@ -1034,9 +1075,6 @@ class GelloIntervention(gym.ActionWrapper):
            #     t2 = time.time()
                 
                 if target_a1x is not None:
-                    # 🔒 固定夹爪位置：无论 Gello 如何移动，都固定在 1.5mm
-                    target_a1x[-1] = 1.5
-                    
                     # 3. 发送命令到机器人
                     if robot is not None:
                         robot.command_joint_state(target_a1x, from_gello=False)
@@ -1486,7 +1524,7 @@ class GelloIntervention(gym.ActionWrapper):
                 manual_succeed = True
                 print(f"✅ 手动奖励已应用: reward={rew}, succeed=True")
             elif self.manual_failure_flag:
-                rew = -1.0
+                rew = 0
                 self.manual_failure_flag = False
                 done = True
                 manual_succeed = False
@@ -1569,7 +1607,7 @@ class GelloIntervention(gym.ActionWrapper):
         #                 intervene_action_eef = np.concatenate([delta_pos, delta_euler, [delta_gripper]])
                     
         #             info = {
-        #                 "intervene_action": target_a1x_joints,
+        #                 "intervene_action_eef": target_a1x_joints,
         #                 "intervene_action_eef": intervene_action_eef,  # EEF 动作
         #                 "gello_intervened": True,
         #                 "gello_joints": gello_joints,
@@ -1705,7 +1743,7 @@ class GelloIntervention(gym.ActionWrapper):
         
         # 6. 构建完整 info（兼容 record_demos_octo.py）
         info = {
-            "intervene_action": intervene_action,       # A1X 关节空间 [7]
+            "intervene_action_eef": intervene_action,       # A1X 关节空间 [7]
             "intervene_action_eef": intervene_action_eef,  # 单步 EEF delta [7]
             "gello_intervened": True,
             "threaded_mode": True,
@@ -1886,7 +1924,7 @@ class GelloIntervention(gym.ActionWrapper):
         
         # Reset base environment
         obs, info = self.env.reset(**kwargs)
-        time.sleep(1.5)  # Wait for stability
+       # time.sleep(1.5)  # Wait for stability
         
         # 记录 reset 次数
         if not hasattr(self, '_reset_count'):
@@ -1960,7 +1998,7 @@ class GelloIntervention(gym.ActionWrapper):
         
         # 🔧 重要：等待 Gello 模式切换完成，避免读取到不稳定的位置
         # 这可以防止 reset 后 A1X 抖动
-        time.sleep(0.5)  # 等待 Gello 完全进入自由模式
+      #  time.sleep(0.5)  # 等待 Gello 完全进入自由模式
         
         # 🔧 标记 reset 结束（恢复后台线程的控制）
         self._resetting = False
@@ -2533,7 +2571,7 @@ class DualSpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         info["left1"] = self.left1
         info["left2"] = self.left2
         info["right1"] = self.right1
@@ -2567,8 +2605,8 @@ class GripperPenaltyWrapper(gym.RewardWrapper):
     def step(self, action):
         """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
         reward = self.reward(reward, action)
         self.last_gripper_pos = observation["state"][0, 0]
         return observation, reward, terminated, truncated, info
@@ -2599,8 +2637,8 @@ class DualGripperPenaltyWrapper(gym.RewardWrapper):
     def step(self, action):
         """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if "intervene_action" in info:
-            action = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            action = info["intervene_action_eef"]
         reward = self.reward(reward, action)
         return observation, reward, terminated, truncated, info
 

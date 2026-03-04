@@ -10,5 +10,5 @@ python ../../train_conrft_octo.py "$@" \
     --bc_weight=0.1 \
     --demo_path=./demo_data/20260210/a1x_pick_banana_21_demos.pkl\
     --pretrain_steps=40000 \
-    --debug=True \
+    --debug=False \
     --learner

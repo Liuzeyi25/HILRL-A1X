@@ -79,11 +79,21 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 重置关节配置 (中立位置)
     # joint2 控制 z 轴高度：减小 = 抬高，增大 = 降低
-    RESET_JOINT_STATE = np.array([-0.06957447, 1.79808511, -1.39553191, 1.14404255, -0.05425532, -0.01276596, 100.0])  # 抬高约 5cm
+#      -0.07404255319148936
+#  1.8125531914893618
+#  -1.2127659574468086
+#  0.9259574468085107
+#  -0.050851063829787234
+#  -0.08468085106382979
+
+    RESET_JOINT_STATE = np.array([-0.05148936170212766, 1.9376595744680851, -1.3795744680851063, 0.951063829787234, -0.05127659574468085, -0.06829787234042553, 100.0])  # 抬高约 5cm
+    USE_GRIPPER = False
     ACTION_SPACE = gym.spaces.Box(
-        low=np.array([-0.002, -0.002, -0.002, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-        high=np.array([0.002, 0.002, 0.002, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+        low=np.ones((7,)) * -1.0,
+        high=np.ones((7,)) * 1.0,
+        dtype=np.float32,
     )
+    GRIPPER_CLOSED_MM = 4  # 夹爪闭合位置 (单位 mm)，当 USE_GRIPPER=False 时使用
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -91,7 +101,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.002, 0.002, 0.002, 0.0, 0.0, 0.0, 0]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -101,7 +111,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # Display and Control
     DISPLAY_IMAGE = True
-    MAX_EPISODE_LENGTH = 1000
+    MAX_EPISODE_LENGTH = 500
     
     # Random Reset
     RANDOM_RESET = False

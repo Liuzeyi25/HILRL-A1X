@@ -6,7 +6,7 @@ import os
 import jax
 import numpy as np
 import jax.numpy as jnp
-
+import gymnasium as gym
 from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
@@ -65,7 +65,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     # Image cropping functions
     IMAGE_CROP = {
         "wrist_1": lambda img: img,
-        "side_policy_256": lambda img: img,
+        "side_policy_256": lambda img: img[106:, 286:-266],
         # side_classifier not available on this machine; leave commented out
         # "side_classifier": lambda img: img[390:-150, 420:-700],
         # "demo": lambda img: img[50:-150, 400:-400]
@@ -76,12 +76,31 @@ class EnvConfig(DefaultA1XEnvConfig):
     # 格式: [joint1, joint2, joint3, joint4, joint5, joint6, gripper(0-100mm)]
     # 注意：必须是7维！(6个关节 + 1个夹爪)
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
-    
+# - 0.25340425531914895
+# - 2.3048936170212766
+# - -1.98
+# - 1.1544680851063829
+# - -0.01872340425531915
+# - 0.25872340425531914
+
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.01531, 1.82555, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
+    RESET_JOINT_STATE = np.array([0.25340425531914895, 2.3048936170212766, -1.98, 1.1544680851063829, -0.01872340425531915, 0.25872340425531914, 100.0])  # 夹爪张开
     
     USE_GRIPPER = False  # 是否使用夹爪控制
+    RESET_SETTLE_TIME = 2.0  # 重置后等待时间（秒），确保环境稳定
+
+    # ACTION_SPACE = gym.spaces.Box(
+    #     low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
+    #     high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+    # )
+    ACTION_SPACE = gym.spaces.Box(
+        low=np.ones((7,)) * -1.0,
+        high=np.ones((7,)) * 1.0,
+        dtype=np.float32,
+    )
+     
     
+    GRIPPER_CLOSED_MM = 10  # 夹爪闭合位置 (单位 mm)，当 USE_GRIPPER=False 时使用
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -89,7 +108,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.003, 0.003, 0.003, 0.0, 0.0, 0.0, 0]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -99,7 +118,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # Display and Control
     DISPLAY_IMAGE = True
-    MAX_EPISODE_LENGTH = 1000
+    MAX_EPISODE_LENGTH = 500
     
     # Random Reset
     RANDOM_RESET = False

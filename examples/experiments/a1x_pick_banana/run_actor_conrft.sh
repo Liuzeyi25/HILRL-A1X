@@ -6,6 +6,6 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false && \
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5 && \
 python ../../train_conrft_octo.py "$@" \
     --exp_name=a1x_pick_banana \
-    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft/0218 \
-    --actor \
-    --ip 193.193.193.201 
+    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft/0226 \
+    --actor 
+    # --ip 193.193.193.201 

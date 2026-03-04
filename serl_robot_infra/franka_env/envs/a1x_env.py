@@ -68,6 +68,20 @@ class DefaultA1XEnvConfig:
         low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
         high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
     )
+    # Gripper closed position in mm.
+    # Used when gripper is disabled or when forcing a closed pose.
+    GRIPPER_CLOSED_MM: float = 1.5
+
+    # EEF completion wait mode:
+    #   False (默认) = 流式发令，不等当前步到位就继续 → RL 执行时最流畅
+    #   True         = 等待到位后才采集下一帧状态  → demo 录制时需要
+    WAIT_FOR_EEF: bool = False
+    # 仅在 WAIT_FOR_EEF=True 时生效：XYZ 到位容差（米）
+    EEF_POS_TOLERANCE_M: float = 0.003  # 3mm
+
+    # Reset
+    # reset 完成后的稳定等待时间（秒），可在子类 config 中覆盖
+    RESET_SETTLE_TIME: float = 2.0
 
     # Misc
     DISPLAY_IMAGE: bool = True
@@ -103,6 +117,8 @@ class A1XEnv(gym.Env):
         print("当前 action_space low:", self.action_space.low)
         print("当前 action_space high:", self.action_space.high)
         print("config 类型:", type(self.config))
+        self.GRIPPER_CLOSED_MM = self.config.GRIPPER_CLOSED_MM
+        print("GRIPPER_CLOSED_MM:", self.GRIPPER_CLOSED_MM)
         self._TARGET_JOINT_STATE = self.config.TARGET_JOINT_STATE
         self._RESET_JOINT_STATE = self.config.RESET_JOINT_STATE
         self._REWARD_THRESHOLD = self.config.REWARD_THRESHOLD
@@ -110,6 +126,9 @@ class A1XEnv(gym.Env):
         self.display_image = self.config.DISPLAY_IMAGE
         self.randomreset = self.config.RANDOM_RESET
         self.use_gripper = getattr(self.config, "USE_GRIPPER", True)
+        self.wait_for_eef = getattr(self.config, "WAIT_FOR_EEF", True)
+        self.eef_pos_tolerance_m = getattr(self.config, "EEF_POS_TOLERANCE_M", 0.003)
+        self.reset_settle_time = getattr(self.config, "RESET_SETTLE_TIME", 2.0)
         self.hz = hz
         self.save_video = save_video
         self.recording_frames = []
@@ -139,6 +158,7 @@ class A1XEnv(gym.Env):
         self.curr_joint_velocities = None
         self.curr_ee_pos_rot_gripper = None
         self.terminate = False
+        self._first_reset_done = False  # 第一次 reset 后置为 True
 
         if fake_env:
             return
@@ -186,8 +206,11 @@ class A1XEnv(gym.Env):
         # Gripper: normalized delta -> absolute mm
         current_gripper = self.curr_ee_pos_rot_gripper[6]
         new_gripper_mm = np.clip(current_gripper + scaled_action[6], 0.0, 1.0) * 100.0
-       # if not self.use_gripper:
-        #    new_gripper_mm = 1.5
+        
+        if not self.use_gripper:
+            # 如果夹爪被禁用，则使用配置中的闭合位置（单位 mm）
+            _grip_conf = self.GRIPPER_CLOSED_MM
+            new_gripper_mm = float(_grip_conf)
 
         # (旋转控制已启用，不再清零 rotation deltas)
         # scaled_action[3:5] = 0.0   # 禁用xy旋转
@@ -199,11 +222,18 @@ class A1XEnv(gym.Env):
             print(f"🔄 Rotation action - dry: {scaled_action[4]:.6f}")
         
         eef_command = np.concatenate([scaled_action[:6], [new_gripper_mm]])
-        result = self.robot.command_eef_pose(eef_command, wait_for_completion=True, timeout=2.0)
+        result = self.robot.command_eef_pose(
+            eef_command,
+            wait_for_completion=self.wait_for_eef,
+            timeout=2.0,
+            pos_tolerance_m=self.eef_pos_tolerance_m,
+        )
 
         self.curr_path_length += 1
 
         # Maintain control frequency
+        # WAIT_FOR_EEF=False 时：sleep 保证 hz 节奏，机器人在 sleep 期间持续运动
+        # WAIT_FOR_EEF=True  时：wait 已消耗大部分时间，remaining 通常接近 0
         remaining = (1.0 / self.hz) - (time.time() - start_time)
         if remaining > 0:
             time.sleep(remaining)
@@ -281,7 +311,7 @@ class A1XEnv(gym.Env):
             self.robot.command_joint_state(joint_positions, from_gello=False)
             time.sleep(1.0 / self.hz)
 
-        time.sleep(5.0)  # settle
+        time.sleep(self.reset_settle_time)  # settle
 
         # Close gripper to 1.5mm after reset if gripper is disabled
         if not self.use_gripper:
@@ -298,22 +328,31 @@ class A1XEnv(gym.Env):
         """Close gripper to 1.5mm for Gello control preparation."""
         self._update_curr_joint_state()
         close_joints = self.curr_joint_positions.copy()
-        close_joints[-1] = 1.5
+        # 使用配置中的夹爪闭合位置（单位 mm），默认 1.5
+        _grip_conf = self.GRIPPER_CLOSED_MM
+        close_joints[-1] = float(_grip_conf)
 
         for _ in range(8):
             self.robot.command_joint_state(close_joints, from_gello=False)
-            time.sleep(0.2)
+            time.sleep(0.15)
 
-        time.sleep(0.5)
+        # time.sleep(0.8)  # settle
         self._update_curr_joint_state()
         final_gripper = self.curr_joint_positions[-1]
-        if abs(final_gripper - 1.5) > 5.0:
-            print(f"Warning: gripper at {final_gripper:.2f}mm, expected 1.5mm")
+        expected_grip = self.GRIPPER_CLOSED_MM
+        if abs(final_gripper - expected_grip) > 5.0:
+            print(f"Warning: gripper at {final_gripper:.2f}mm, expected {expected_grip:.2f}mm")
 
     def go_to_reset(self):
         reset_joints = self._RESET_JOINT_STATE.copy()
         if self.randomreset:
             reset_joints[:6] += np.random.uniform(-0.1, 0.1, size=(6,))
+        # 第一次 reset 后，用 GRIPPER_CLOSED_MM 覆盖夹爪维度，
+        # 这样后续每次 reset 运动时夹爪保持闭合状态，
+        # 只有第一次 reset 才使用 config 里配置的初始张开值。
+        if not self.use_gripper:
+            if self._first_reset_done:
+                reset_joints[-1] = float(self.GRIPPER_CLOSED_MM)
         self.interpolate_move(reset_joints, timeout=2.0)
 
     def reset(self, **kwargs):
@@ -321,6 +360,7 @@ class A1XEnv(gym.Env):
             self.save_video_recording()
 
         self.go_to_reset()
+        self._first_reset_done = True
         self.curr_path_length = 0
         self._update_curr_joint_state()
 

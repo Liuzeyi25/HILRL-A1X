@@ -65,7 +65,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     # Image cropping functions
     IMAGE_CROP = {
         "wrist_1": lambda img: img,
-        "side_policy_256": lambda img: img,
+        "side_policy_256": lambda img: img[:, 281:-187],
         # side_classifier not available on this machine; leave commented out
         # "side_classifier": lambda img: img[390:-150, 420:-700],
         # "demo": lambda img: img[50:-150, 400:-400]
@@ -78,11 +78,21 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.01531, 1.82555, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
+# - 0.38765957446808513
+# - 2.1882978723404256
+# - -1.2636170212765958
+# - 0.6391489361702127
+# - -0.06106382978723404
+# - 0.3204255319148936
+
+    RESET_JOINT_STATE = np.array([0.38765957446808513, 2.1882978723404256, -1.2636170212765958, 0.6391489361702127, -0.06106382978723404, 0.3204255319148936, 100.0])  # 中立位置 (7维)
+   # RESET_JOINT_STATE = np.array([-0.44680851063829785, 2.1317021276595747, -1.1602127659574468, 0.5540425531914893, -0.03851063829787234, -0.5161702127659574, 100.0])  # 夹爪张开
     ACTION_SPACE = gym.spaces.Box(
-            low=np.array([-0.005, -0.005, -0.005, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-            high=np.array([0.005, 0.005, 0.005, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
-        )   
+        low=np.ones((7,)) * -1.0,
+        high=np.ones((7,)) * 1.0,
+        dtype=np.float32,
+    )
+    RESET_SETTLE_TIME = 5.0  # 重置后等待环境稳定的时间（秒）
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -90,7 +100,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.005, 0.005, 0.005, 0.0, 0.0, 0.0, 0.5]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -100,7 +110,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # Display and Control
     DISPLAY_IMAGE = True
-    MAX_EPISODE_LENGTH = 1000
+    MAX_EPISODE_LENGTH = 500
     
     # Random Reset
     RANDOM_RESET = False

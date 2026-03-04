@@ -21,4 +21,5 @@ CONFIG_MAPPING = {
     "toast_bread": ToastBreadTrainConfig,
     "pour_water": pourwaterTrainConfig,
     "press_button": pressbuttonTrainConfig,
+    "take_out_bread": ToastBreadTrainConfig,
 }

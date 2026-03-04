@@ -1,0 +1,58 @@
+Episode at step 8749
+Trajectory length: 50
+Total return: -1.0000
+Success: False
+============================================================
+
+Timestep   Reward       MC Return   
+------------------------------------------------------------
+0          0.0000       None        
+1          0.0000       None        
+2          0.0000       None        
+3          0.0000       None        
+4          0.0000       None        
+5          0.0000       None        
+6          0.0000       None        
+7          0.0000       None        
+8          0.0000       None        
+9          0.0000       None        
+10         0.0000       None        
+11         0.0000       None        
+12         0.0000       None        
+13         0.0000       None        
+14         0.0000       None        
+15         0.0000       None        
+16         0.0000       None        
+17         0.0000       None        
+18         0.0000       None        
+19         0.0000       None        
+20         0.0000       None        
+21         0.0000       None        
+22         0.0000       None        
+23         0.0000       None        
+24         0.0000       None        
+25         0.0000       None        
+26         0.0000       None        
+27         0.0000       None        
+28         0.0000       None        
+29         0.0000       None        
+30         0.0000       None        
+31         0.0000       None        
+32         0.0000       None        
+33         0.0000       None        
+34         0.0000       None        
+35         0.0000       None        
+36         0.0000       None        
+37         0.0000       None        
+38         0.0000       None        
+39         0.0000       None        
+40         0.0000       None        
+41         0.0000       None        
+42         0.0000       None        
+43         0.0000       None        
+44         0.0000       None        
+45         0.0000       None        
+46         0.0000       None        
+47         0.0000       None        
+48         0.0000       None        
+49         -1.0000      None        

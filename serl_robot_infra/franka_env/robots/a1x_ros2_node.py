@@ -55,7 +55,7 @@ class A1XRobotZMQNode(Node):
     SAFE_EFFORT_JOINT_2 = 8.0  # N·m
     SAFE_EFFORT_JOINT_3 = 7.0  # N·m
     SAFE_EFFORT_JOINT_4 = 5.0  # N·m
-    SAFE_Z_MIN = 0.083  # meters
+    SAFE_Z_MIN = 0.07  # meters 0.081
 
     def __init__(
         self,
@@ -348,13 +348,13 @@ class A1XRobotZMQNode(Node):
                     elif cmd == "command_eef_pose":
                         eef_pose = request.get("pose")
                         wait_for_completion = request.get("wait_for_completion", True)
-                        timeout = float(request.get("timeout", 2.0))
+                        timeout = float(request.get("timeout", 4.0))
                         
                         # 调用publish_eef_command，返回dict
                         result = self.publish_eef_command(
                             eef_pose, 
                             wait_for_completion=wait_for_completion,
-                            joint_tolerance=0.01,  # 0.01 rad joint tolerance
+                            pos_tolerance_m=0.0007,  # 0.7mm XYZ 位置容差
                             timeout=timeout
                         )
                         
@@ -413,7 +413,7 @@ class A1XRobotZMQNode(Node):
                     if cmd == "get_state":
                         with self._lock:
                             response = {
-                                "positions": self._current_joint_positions,
+                                "positions": self._current_joint_positions, # 关节raw位置，末尾是gripper位置 -2.7~0
                                 "velocities": self._current_joint_velocities,
                                 "joint_names": self._joint_names,
                                 "torques": self._current_joint_torques,
@@ -534,20 +534,42 @@ class A1XRobotZMQNode(Node):
         
         # Safety check: FK-based Z limit
         fk_result = self.compute_fk(arm_positions)
-        if fk_result and fk_result['position']['z'] < self.SAFE_Z_MIN:
-            self.get_logger().warn(
-                f"Safety stop: FK Z position {fk_result['position']['z']:.3f} m "
-                f"below limit {self.SAFE_Z_MIN:.3f} m"
-            )
-            # Publish gripper command separately - Float32 with range 0-100mm
-            if gripper_position is not None:
-                # haoyuan print - 🚀 高频循环中禁用
-                # print(gripper_position)
-                gripper_msg = Float32()
-                gripper_msg.data = float(gripper_position)
-                self.gripper_command_pub.publish(gripper_msg)
-            
-            return None
+        if fk_result:
+            fk_z = fk_result['position']['z']
+
+            # 默认阻止低于安全高度的命令
+            block_for_z = False
+
+            # 如果我们能读取到当前末端位姿，则允许一个例外：
+            # - 当预测的 fk_z 虽然低于 SAFE_Z_MIN，但相对于当前的 z 是向上的（fk_z > current_z）
+            #   则认为这是一个向上修正动作，允许发送（避免数值误差导致的误阻断）。
+            # - 否则（fk_z <= current_z 或无法读取当前 pose），仍然阻止。
+            with self._lock:
+                cur_z = None if self._current_pos is None else float(self._current_pos[2])
+
+            if fk_z < self.SAFE_Z_MIN:
+                if cur_z is None:
+                    # 无法获取当前位姿，保守阻止
+                    block_for_z = True
+                else:
+                    # 允许向上（增高）的小修正动作通过
+                    # 使用一个很小的容差避免数值噪声造成误判
+                    eps = 1e-6
+                    delta_z = fk_z - cur_z
+                    if delta_z <= eps:
+                        block_for_z = True
+
+            if block_for_z:
+                self.get_logger().warn(
+                    f"Safety stop: FK Z position {fk_z:.3f} m below limit {self.SAFE_Z_MIN:.3f} m (current_z={cur_z})"
+                )
+                # Publish gripper command separately - Float32 with range 0-100mm
+                if gripper_position is not None:
+                    gripper_msg = Float32()
+                    gripper_msg.data = float(gripper_position)
+                    self.gripper_command_pub.publish(gripper_msg)
+
+                return None
         
         # Publish arm joint command
         msg = JointState()
@@ -561,7 +583,7 @@ class A1XRobotZMQNode(Node):
                 msg.name = [f"joint_{i+1}" for i in range(len(arm_positions))]
         
         msg.position = arm_positions
-        msg.velocity = [0.5] * len(arm_positions)  # 恒定速度
+        msg.velocity = [0.6] * len(arm_positions)  # 恒定速度
         msg.effort = []
         # 🚀 高频循环中禁用 print，避免阻塞！
         # print(f"Publishing joint command: positions={arm_positions}, gripper={gripper_position}")
@@ -581,7 +603,10 @@ class A1XRobotZMQNode(Node):
             intended.append(float(gripper_position))
         return intended
 
-    def publish_eef_command(self, eef_pose, wait_for_completion=True, joint_tolerance=0.005, timeout=2.0):
+    def publish_eef_command(self, eef_pose, wait_for_completion=True,
+                            pos_tolerance_m=0.001, timeout=4.0,
+                            # 旧参数保留兼容，不再用于完成判断
+                            joint_tolerance=None):
         """Publish end-effector pose command using external CuRobo IK service.
         
         Args:
@@ -590,11 +615,15 @@ class A1XRobotZMQNode(Node):
                      Next 3: delta rotation (euler angles in radians)
                      Last 1: gripper absolute position (0-100mm)
             wait_for_completion: 是否等待执行到位
-            joint_tolerance: 关节角度误差容忍度（弧度）
+            pos_tolerance_m: XYZ 位置误差容忍度（米），默认 0.001 = 1mm
+                             直接用 /hdas/pose_ee_arm 反馈的 _current_pos 与目标 XYZ 比较，
+                             物理含义明确，不受臂型/关节构型影响。
             timeout: 超时时间（秒）
+            joint_tolerance: 已废弃，保留参数以免调用方报错，不再使用。
         
         Returns:
-            dict with 'target_joints', 'reached', 'final_error', 'gripper'
+            dict with 'target_joints', 'reached', 'final_error_m', 'gripper'
+            final_error_m: 超时时的实际 XYZ 位置误差（米）
         """
         if len(eef_pose) != 7:
             self.get_logger().error(f"Invalid eef_pose length: {len(eef_pose)}, expected 7")
@@ -618,8 +647,8 @@ class A1XRobotZMQNode(Node):
         delta_rot_euler = np.array(eef_pose[3:6])
         gripper_position = eef_pose[6]
         
-        # 计算目标位置
-        new_pos = current_pos + delta_pos
+        # 计算目标位置（这就是完成判断的基准）
+        target_pos = current_pos + delta_pos
         
         # 计算目标旋转（旋转组合）
         current_rotation = R.from_quat(current_rot)
@@ -627,10 +656,10 @@ class A1XRobotZMQNode(Node):
         new_rotation = delta_rotation * current_rotation
         new_quat = new_rotation.as_quat()  # [x, y, z, w]
         
-        print(f"[a1x_ros2_node] Action to be Solved - pos: {new_pos}, quat[x,y,z,w]: {new_quat}")
+        print(f"[a1x_ros2_node] Action to be Solved - pos: {target_pos}, quat[x,y,z,w]: {new_quat}")
 
         # 调用外部CuRobo IK服务
-        reply = self._request_remote_ik(new_pos, new_quat, current_joints)
+        reply = self._request_remote_ik(target_pos, new_quat, current_joints)
         if reply is None:
             self.get_logger().error("External CuRobo IK service failed")
             return None
@@ -640,23 +669,26 @@ class A1XRobotZMQNode(Node):
             self.get_logger().error("Invalid IK solution from service")
             return None
         
-        # 计算关节差距
+        # 计算关节差距（仅供参考打印，不用于完成判断）
         joint_diff = np.abs(joint_solution - current_joints)
         max_diff = joint_diff.max()
         
         print(f"[a1x_ros2_node] Current joints: {current_joints}")
         print(f"[a1x_ros2_node] Target joints:  {joint_solution}")
         print(f"[a1x_ros2_node] Joint diff:     {joint_diff}")
-        print(f"[a1x_ros2_node] Max joint diff: {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f}°)") 
+        print(f"[a1x_ros2_node] Max joint diff: {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f}°)")
+        print(f"[a1x_ros2_node] Completion criterion: XYZ pos error < {pos_tolerance_m*1000:.1f} mm")
         
         # 发布关节命令
         self.publish_joint_command(
             np.concatenate([joint_solution, [gripper_position]])
         )
         
-        # 等待执行到位（用关节角度判断）
+        # ── 等待执行到位：直接监控 EEF XYZ 位置误差 ──────────────────────────
+        # 用 /hdas/pose_ee_arm 反馈的 _current_pos 与 target_pos 比较。
+        # 优点：物理意义直接（mm级），不受臂型/奇异点影响。
         reached = False
-        final_error = float('inf')
+        final_error_m = float('inf')
         
         if wait_for_completion:
             start_time = time.time()
@@ -664,15 +696,15 @@ class A1XRobotZMQNode(Node):
             
             while time.time() - start_time < timeout:
                 with self._lock:
-                    if self._current_joint_positions is None:
+                    if self._current_pos is None:
                         time.sleep(poll_interval)
                         continue
-                    current_joints_check = np.array(self._current_joint_positions[:6])
+                    current_pos_check = self._current_pos.copy()
                 
-                joint_error = np.abs(current_joints_check - joint_solution).max()
-                final_error = joint_error
+                pos_error = float(np.linalg.norm(current_pos_check - target_pos))
+                final_error_m = pos_error
                 
-                if joint_error < joint_tolerance:
+                if pos_error < pos_tolerance_m:
                     reached = True
                     break
                 
@@ -680,13 +712,15 @@ class A1XRobotZMQNode(Node):
             
             if not reached:
                 self.get_logger().warn(
-                    f"EEF timeout: joint error={final_error:.4f} rad (tolerance={joint_tolerance:.4f} rad)"
+                    f"EEF timeout: pos error={final_error_m*1000:.2f} mm "
+                    f"(tolerance={pos_tolerance_m*1000:.1f} mm)"
                 )
         
         return {
             'target_joints': joint_solution.tolist(),
             'reached': reached,
-            'final_error': float(final_error),
+            'final_error_m': final_error_m,
+            'final_error_mm': final_error_m * 1000,
             'gripper': float(gripper_position)
         }
     

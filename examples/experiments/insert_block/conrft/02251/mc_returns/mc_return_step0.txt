@@ -1,0 +1,9 @@
+Episode at step 0
+Trajectory length: 1
+Total return: -1.0000
+Success: False
+============================================================
+
+Timestep   Reward       MC Return   
+------------------------------------------------------------
+0          -1.0000      -1.0        

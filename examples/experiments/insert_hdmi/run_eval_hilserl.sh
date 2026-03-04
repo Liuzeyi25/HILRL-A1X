@@ -1,0 +1,10 @@
+export XLA_PYTHON_CLIENT_PREALLOCATE=false && \
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.2 && \
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH && \
+python ../../train_rlpd.py "$@" \
+    --exp_name=insert_hdmi \
+    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/insert_hdmi/hilserl/0226 \
+    --eval \
+    --eval_steps 44000 \
+    --eval_episodes 10 
+    # --eval_checkpoint_step=26000 \

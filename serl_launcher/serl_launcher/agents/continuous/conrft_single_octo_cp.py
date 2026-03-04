@@ -39,20 +39,24 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         """
         Forward pass for critic network.
         Pass grad_params to use non-default parameters (e.g. for gradients).
-        
-        🚀 支持 action chunking: 如果 actions 是 2D (chunk_size, action_dim_per_step)，
-        会自动 flatten 为 1D
+
+        注意: 3D actions (batch, n_actions, action_dim) 由 multiple_action_q_function
+        decorator 在 Critic.__call__ 内部通过 vmap 处理，不应在此处手动 reshape，
+        否则会与 CQL 多动作采样的 3D tensor 冲突。
         """
         if train:
             assert rng is not None, "Must specify rng when training"
-        
-        # 🚀 Flatten chunked actions for critic (if needed)
-        # Critic 期望 actions 是 (batch_size, action_dim)
-        # 如果 actions 是 (batch_size, chunk_size, action_dim_per_step), flatten 为 (batch_size, chunk_size*action_dim_per_step)
-        if actions.ndim == 3:  # (batch, chunk_size, action_dim_per_step)
-            batch_size = actions.shape[0]
-            actions = actions.reshape(batch_size, -1)  # (batch, chunk_size*action_dim_per_step)
-        
+
+        # 🚫 已禁用: action chunking flatten 逻辑
+        # 原意是处理 action chunking (batch, chunk_size, action_dim_per_step) → (batch, chunk_size*action_dim_per_step)
+        # 但当 action_chunk_size=None 时，CQL 的 all_sampled_actions (B, cql_n_actions*3, 7)
+        # 也会触发此分支，导致 action_dim 从 7 变成 210，critic 输入维度从 583 变成 786，
+        # 与初始化时的参数形状不一致，触发 ScopeParamShapeError。
+        # CQL 的 3D actions 由 @multiple_action_q_function decorator 通过 vmap 正确处理。
+        # if actions.ndi发h, chunk_size, action_dim_per_step)
+        #     batch_size = actions.shape[0]
+        #     actions = actions.reshape(batch_size, -1)  # (batch, chunk_size*action_dim_per_step)
+
         return self.state.apply_fn(
             {"params": grad_params or self.state.params},
             observations,
@@ -430,6 +434,19 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
 
         distiller, _ = self.forward_policy(
             batch["tasks"], batch["observations"], batch["embeddings"], x_t, t, rng=policy_rng2, grad_params=params)
+        
+        # # === Debug: 查看真值 x_start 和模型输出 distiller 的范围 ===
+        # jax.debug.print(">>> [BC Debug] x_start shape: {s}, min: {mn:.4f}, max: {mx:.4f}, mean: {me:.4f}",
+        #                 s=x_start.shape, mn=jnp.min(x_start), mx=jnp.max(x_start), me=jnp.mean(x_start))
+        # jax.debug.print(">>> [BC Debug] x_start per-dim mean: {v}", v=jnp.mean(x_start, axis=0))
+        # jax.debug.print(">>> [BC Debug] x_start per-dim std:  {v}", v=jnp.std(x_start, axis=0))
+        # jax.debug.print(">>> [BC Debug] distiller shape: {s}, min: {mn:.4f}, max: {mx:.4f}, mean: {me:.4f}",
+        #                 s=distiller.shape, mn=jnp.min(distiller), mx=jnp.max(distiller), me=jnp.mean(distiller))
+        # jax.debug.print(">>> [BC Debug] distiller per-dim mean: {v}", v=jnp.mean(distiller, axis=0))
+        # jax.debug.print(">>> [BC Debug] distiller per-dim std:  {v}", v=jnp.std(distiller, axis=0))
+        # jax.debug.print(">>> [BC Debug] diff (distiller - x_start) abs mean: {v:.4f}", v=jnp.mean(jnp.abs(distiller - x_start)))
+        # jax.debug.breakpoint()
+        # # === End Debug ===
 
         snrs = get_snr(t)
         weights = get_weightings("karras", snrs, self.config["sigma_data"])
@@ -543,9 +560,22 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
 
         return actor_loss, info
 
+    def _get_actor_loss_fn(self, batch):
+        """根据 config 选择标准 / cov-masked actor loss。"""
+        if self.config.get("use_cov_actor_loss", False):
+            _factory = self.config["_cov_fn_factory"]
+            _cov_fn = _factory(
+                self,
+                K=self.config.get("cov_K", 4),
+                q_low=self.config.get("cov_q_low", 0.05),
+                q_high=self.config.get("cov_q_high", 0.90),
+            )
+            return partial(_cov_fn, batch)
+        return partial(self.policy_loss_fn, batch)
+
     def calql_loss_fns(self, batch):
         losses = {
-            "actor": partial(self.policy_loss_fn, batch),
+            "actor": self._get_actor_loss_fn(batch),
             "critic": partial(self.calql_critic_loss_fn, batch),
         }
 
@@ -553,7 +583,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
 
     def loss_fns(self, batch):
         losses = {
-            "actor": partial(self.policy_loss_fn, batch),
+            "actor": self._get_actor_loss_fn(batch),
             "critic": partial(self.critic_loss_fn, batch),
         }
 

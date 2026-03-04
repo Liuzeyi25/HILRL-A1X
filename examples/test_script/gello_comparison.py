@@ -85,7 +85,7 @@ def new_way_example():
     obs, rew, done, _, info = env.step(action)
     
     # Gello 自动介入
-    if "intervene_action" in info:
+    if "intervene_action_eef" in info:
         print("Gello 正在控制")
     """)
     
@@ -107,7 +107,7 @@ def new_way_example():
         action = np.zeros(env.action_space.sample().shape)
         obs, rew, done, truncated, info = env.step(action)
         
-        if "intervene_action" in info:
+        if "intervene_action_eef" in info:
             print(f"  Step {i}: ✋ Gello 介入，动作 = {info['intervene_action'][:3]}...")
         else:
             print(f"  Step {i}: 🤖 策略控制")

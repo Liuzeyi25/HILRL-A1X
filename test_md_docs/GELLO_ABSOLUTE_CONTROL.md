@@ -83,7 +83,7 @@ env = GelloIntervention(
 
 ```python
 # 记录格式：
-info["intervene_action"] = [
+info["intervene_action_eef"] = [
     delta_x, delta_y, delta_z,       # 位置变化
     delta_rx, delta_ry, delta_rz,    # 旋转变化（欧拉角）
     absolute_gripper                 # 夹爪绝对值

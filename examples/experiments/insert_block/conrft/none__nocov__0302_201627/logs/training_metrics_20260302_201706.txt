@@ -1,0 +1,406 @@
+Training started at step 0
+Timestamp: 2026-03-02 20:17:06
+================================================================================
+
+[Pretrain] Step 0:
+
+[Pretrain] Step 10:
+
+[Pretrain] Step 20:
+
+[Pretrain] Step 30:
+
+[Pretrain] Step 40:
+
+[Pretrain] Step 50:
+
+[Pretrain] Step 60:
+
+[Pretrain] Step 70:
+
+[Pretrain] Step 80:
+
+[Pretrain] Step 90:
+
+[Pretrain] Step 100:
+
+[Pretrain] Step 110:
+
+[Pretrain] Step 120:
+
+[Pretrain] Step 130:
+
+[Pretrain] Step 140:
+
+[Pretrain] Step 150:
+
+[Pretrain] Step 160:
+
+[Pretrain] Step 170:
+
+[Pretrain] Step 180:
+
+[Pretrain] Step 190:
+
+[Pretrain] Step 200:
+
+[Pretrain] Step 210:
+
+[Pretrain] Step 220:
+
+[Pretrain] Step 230:
+
+[Pretrain] Step 240:
+
+[Pretrain] Step 250:
+
+[Pretrain] Step 260:
+
+[Pretrain] Step 270:
+
+[Pretrain] Step 280:
+
+[Pretrain] Step 290:
+
+[Pretrain] Step 300:
+
+[Pretrain] Step 310:
+
+[Pretrain] Step 320:
+
+[Pretrain] Step 330:
+
+[Pretrain] Step 340:
+
+[Pretrain] Step 350:
+
+[Pretrain] Step 360:
+
+[Pretrain] Step 370:
+
+[Pretrain] Step 380:
+
+[Pretrain] Step 390:
+
+[Pretrain] Step 400:
+
+[Pretrain] Step 410:
+
+[Pretrain] Step 420:
+
+[Pretrain] Step 430:
+
+[Pretrain] Step 440:
+
+[Pretrain] Step 450:
+
+[Pretrain] Step 460:
+
+[Pretrain] Step 470:
+
+[Pretrain] Step 480:
+
+[Pretrain] Step 490:
+
+[Pretrain] Step 500:
+
+[Pretrain] Step 510:
+
+[Pretrain] Step 520:
+
+[Pretrain] Step 530:
+
+[Pretrain] Step 540:
+
+[Pretrain] Step 550:
+
+[Pretrain] Step 560:
+
+[Pretrain] Step 570:
+
+[Pretrain] Step 580:
+
+[Pretrain] Step 590:
+
+[Pretrain] Step 600:
+
+[Pretrain] Step 610:
+
+[Pretrain] Step 620:
+
+[Pretrain] Step 630:
+
+[Pretrain] Step 640:
+
+[Pretrain] Step 650:
+
+[Pretrain] Step 660:
+
+[Pretrain] Step 670:
+
+[Pretrain] Step 680:
+
+[Pretrain] Step 690:
+
+[Pretrain] Step 700:
+
+[Pretrain] Step 710:
+
+[Pretrain] Step 720:
+
+[Pretrain] Step 730:
+
+[Pretrain] Step 740:
+
+[Pretrain] Step 750:
+
+[Pretrain] Step 760:
+
+[Pretrain] Step 770:
+
+[Pretrain] Step 780:
+
+[Pretrain] Step 790:
+
+[Pretrain] Step 800:
+
+[Pretrain] Step 810:
+
+[Pretrain] Step 820:
+
+[Pretrain] Step 830:
+
+[Pretrain] Step 840:
+
+[Pretrain] Step 850:
+
+[Pretrain] Step 860:
+
+[Pretrain] Step 870:
+
+[Pretrain] Step 880:
+
+[Pretrain] Step 890:
+
+[Pretrain] Step 900:
+
+[Pretrain] Step 910:
+
+[Pretrain] Step 920:
+
+[Pretrain] Step 930:
+
+[Pretrain] Step 940:
+
+[Pretrain] Step 950:
+
+[Pretrain] Step 960:
+
+[Pretrain] Step 970:
+
+[Pretrain] Step 980:
+
+[Pretrain] Step 990:
+
+[Pretrain] Step 1000:
+
+[Pretrain] Step 1010:
+
+[Pretrain] Step 1020:
+
+[Pretrain] Step 1030:
+
+[Pretrain] Step 1040:
+
+[Pretrain] Step 1050:
+
+[Pretrain] Step 1060:
+
+[Pretrain] Step 1070:
+
+[Pretrain] Step 1080:
+
+[Pretrain] Step 1090:
+
+[Pretrain] Step 1100:
+
+[Pretrain] Step 1110:
+
+[Pretrain] Step 1120:
+
+[Pretrain] Step 1130:
+
+[Pretrain] Step 1140:
+
+[Pretrain] Step 1150:
+
+[Pretrain] Step 1160:
+
+[Pretrain] Step 1170:
+
+[Pretrain] Step 1180:
+
+[Pretrain] Step 1190:
+
+[Pretrain] Step 1200:
+
+[Pretrain] Step 1210:
+
+[Pretrain] Step 1220:
+
+[Pretrain] Step 1230:
+
+[Pretrain] Step 1240:
+
+[Pretrain] Step 1250:
+
+[Pretrain] Step 1260:
+
+[Pretrain] Step 1270:
+
+[Pretrain] Step 1280:
+
+[Pretrain] Step 1290:
+
+[Pretrain] Step 1300:
+
+[Pretrain] Step 1310:
+
+[Pretrain] Step 1320:
+
+[Pretrain] Step 1330:
+
+[Pretrain] Step 1340:
+
+[Pretrain] Step 1350:
+
+[Pretrain] Step 1360:
+
+[Pretrain] Step 1370:
+
+[Pretrain] Step 1380:
+
+[Pretrain] Step 1390:
+
+[Pretrain] Step 1400:
+
+[Pretrain] Step 1410:
+
+[Pretrain] Step 1420:
+
+[Pretrain] Step 1430:
+
+[Pretrain] Step 1440:
+
+[Pretrain] Step 1450:
+
+[Pretrain] Step 1460:
+
+[Pretrain] Step 1470:
+
+[Pretrain] Step 1480:
+
+[Pretrain] Step 1490:
+
+[Pretrain] Step 1500:
+
+[Pretrain] Step 1510:
+
+[Pretrain] Step 1520:
+
+[Pretrain] Step 1530:
+
+[Pretrain] Step 1540:
+
+[Pretrain] Step 1550:
+
+[Pretrain] Step 1560:
+
+[Pretrain] Step 1570:
+
+[Pretrain] Step 1580:
+
+[Pretrain] Step 1590:
+
+[Pretrain] Step 1600:
+
+[Pretrain] Step 1610:
+
+[Pretrain] Step 1620:
+
+[Pretrain] Step 1630:
+
+[Pretrain] Step 1640:
+
+[Pretrain] Step 1650:
+
+[Pretrain] Step 1660:
+
+[Pretrain] Step 1670:
+
+[Pretrain] Step 1680:
+
+[Pretrain] Step 1690:
+
+[Pretrain] Step 1700:
+
+[Pretrain] Step 1710:
+
+[Pretrain] Step 1720:
+
+[Pretrain] Step 1730:
+
+[Pretrain] Step 1740:
+
+[Pretrain] Step 1750:
+
+[Pretrain] Step 1760:
+
+[Pretrain] Step 1770:
+
+[Pretrain] Step 1780:
+
+[Pretrain] Step 1790:
+
+[Pretrain] Step 1800:
+
+[Pretrain] Step 1810:
+
+[Pretrain] Step 1820:
+
+[Pretrain] Step 1830:
+
+[Pretrain] Step 1840:
+
+[Pretrain] Step 1850:
+
+[Pretrain] Step 1860:
+
+[Pretrain] Step 1870:
+
+[Pretrain] Step 1880:
+
+[Pretrain] Step 1890:
+
+[Pretrain] Step 1900:
+
+[Pretrain] Step 1910:
+
+[Pretrain] Step 1920:
+
+[Pretrain] Step 1930:
+
+[Pretrain] Step 1940:
+
+[Pretrain] Step 1950:
+
+[Pretrain] Step 1960:
+
+[Pretrain] Step 1970:
+
+[Pretrain] Step 1980:
+
+[Pretrain] Step 1990:
+
+[Pretrain] Step 2000:
+

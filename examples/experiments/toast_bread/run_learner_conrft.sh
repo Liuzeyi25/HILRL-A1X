@@ -8,7 +8,7 @@ python ../../train_conrft_octo.py "$@" \
     --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft/0208 \
     --q_weight=1.0 \
     --bc_weight=0.1 \
-    --demo_path=./demo_data/20260210/a1x_pick_banana_21_demos.pkl\
+    --demo_path=./demo_data/20260222/traj_20.pkl\
     --pretrain_steps=40000 \
-    --debug=True \
+    --debug=False \
     --learner

@@ -78,18 +78,20 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     
     # 重置关节配置 (中立位置)
-#     - -0.00851063829787234
-# - 1.7708510638297872
-# - -0.08212765957446809
-# - -1.3238297872340425
-# - -0.15723404255319148
-# - 0.0451063829787234
+    #     - -0.00851063829787234
+    # - 1.7708510638297872
+    # - -0.08212765957446809
+    # - -1.3238297872340425
+    # - -0.15723404255319148
+    # - 0.0451063829787234
 
     RESET_JOINT_STATE = np.array([-0.00851063829787234, 1.7708510638297872, -0.08212765957446809, -1.3238297872340425, -0.15723404255319148, 0.0451063829787234, 100.0])  # 夹爪张开
+    USE_GRIPPER = False
     ACTION_SPACE = gym.spaces.Box(
-            low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-            high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
-        )
+        low=np.ones((7,)) * -1.0,
+        high=np.ones((7,)) * 1.0,
+        dtype=np.float32,
+    )
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -97,7 +99,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 1.0, 0,0 , 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.005, 0.005, 0.005, 0.0, 0.0, 0.05, 0.2]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -140,7 +142,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Pick up the banana"
+    task_desc = "Pour water"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"

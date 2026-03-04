@@ -6,7 +6,7 @@ import os
 import jax
 import numpy as np
 import jax.numpy as jnp
-
+import gymnasium as gym
 from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
@@ -65,7 +65,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     # Image cropping functions
     IMAGE_CROP = {
         "wrist_1": lambda img: img,
-        "side_policy_256": lambda img: img,
+        "side_policy_256": lambda img: img[86:, 242:-66],
         # side_classifier not available on this machine; leave commented out
         # "side_classifier": lambda img: img[390:-150, 420:-700],
         # "demo": lambda img: img[50:-150, 400:-400]
@@ -78,8 +78,23 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.01531, 1.82555, -1.139, 0.868, -0.053, -0.103, 100.0])  # 夹爪张开
-    
+# - 0.023829787234042554
+# - 2.01468085106383
+# - -1.1251063829787233
+# - 0.7329787234042553
+# - -0.035106382978723406
+# - 1.5465957446808511
+
+    RESET_JOINT_STATE = np.array([0.023829787234042554, 2.01468085106383, -1.1251063829787233, 0.7329787234042553, -0.035106382978723406, 1.5465957446808511, 100.0])  # 中立位置 (7维)
+   # RESET_JOINT_STATE = np.array([0.046595744680851064, 1.9025531914893616, -0.9106382978723404, 0.5502127659574468, -0.054680851063829784, -0.03893617021276596, 100.0])  # 夹爪张开
+    ACTION_SPACE = gym.spaces.Box(
+        low=np.ones((7,)) * -1.0,
+        high=np.ones((7,)) * 1.0,
+        dtype=np.float32,
+    )
+    USE_GRIPPER = False
+    GRIPPER_CLOSED_MM = 40 # 夹爪闭合位置 (单位 mm)，当 USE_GRIPPER=False 时使用
+    RESET_SETTLE_TIME = 5.0
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
@@ -87,7 +102,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.005, 0.005, 0.005, 0.0, 0.0, 0.0, 0.0]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -97,7 +112,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # Display and Control
     DISPLAY_IMAGE = True
-    MAX_EPISODE_LENGTH = 1000
+    MAX_EPISODE_LENGTH = 500
     
     # Random Reset
     RANDOM_RESET = False
@@ -135,7 +150,7 @@ class TrainConfig(DefaultTrainingConfig):
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"
     octo_path = "hf://rail-berkeley/octo-small-1.5"
-    teleoperation_device = "gello"  # "gello", "spacemouse", or None
+    teleoperation_device = "spacemouse"  # "gello", "spacemouse", or None
     
     # 🆕 新版 GelloIntervention 配置（基于 launch_yaml.py）
     gello_config_path = "/home/dungeon_master/conrft/Gello/gello_software/configs/yam_A1_X.yaml"  # YAML 配置文件路径

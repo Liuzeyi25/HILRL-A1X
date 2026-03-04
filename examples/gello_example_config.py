@@ -119,8 +119,8 @@ def example_record_gello_demos():
         next_obs, rew, done, truncated, info = env.step(actions)
         
         # Check if Gello intervened
-        if "intervene_action" in info:
-            actions = info["intervene_action"]
+        if "intervene_action_eef" in info:
+            actions = info["intervene_action_eef"]
             # print(f"✋ Gello intervention detected")
         
         transition = copy.deepcopy(dict(
@@ -176,7 +176,7 @@ def example_mixed_control():
     for _ in range(50):
         action = env_gello.action_space.sample() * 0  # Zero action
         obs, rew, done, truncated, info = env_gello.step(action)
-        if "intervene_action" in info:
+        if "intervene_action_eef" in info:
             print("  ✋ Gello is controlling the robot")
         time.sleep(0.02)
     env_gello.close()
@@ -189,7 +189,7 @@ def example_mixed_control():
     for _ in range(50):
         action = env_spacemouse.action_space.sample() * 0
         obs, rew, done, truncated, info = env_spacemouse.step(action)
-        if "intervene_action" in info:
+        if "intervene_action_eef" in info:
             print("  ✋ SpaceMouse is controlling the robot")
         time.sleep(0.02)
     env_spacemouse.close()

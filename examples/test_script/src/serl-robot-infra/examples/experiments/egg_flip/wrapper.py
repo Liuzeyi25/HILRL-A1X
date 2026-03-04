@@ -94,7 +94,7 @@ class EggFlipSpacemouseIntervention(gym.ActionWrapper):
 
         obs, rew, done, truncated, info = self.env.step(new_action)
         if replaced:
-            info["intervene_action"] = new_action
+            info["intervene_action_eef"] = new_action
         info["left"] = self.left
         info["right"] = self.right
         return obs, rew, done, truncated, info

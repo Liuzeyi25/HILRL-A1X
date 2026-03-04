@@ -253,9 +253,23 @@ class SACAgent(flax.struct.PyTreeNode):
         return temperature_loss, {"temperature_loss": temperature_loss}
     
     def loss_fns(self, batch):
+        # 如果 config 中启用了 cov_actor_loss，使用协方差熵截断 Actor Loss
+        # 工厂函数由 train_rlpd.py 注入至 config["_cov_fn_factory"]，避免在包内 import examples 目录
+        if self.config.get("use_cov_actor_loss", False):
+            _factory = self.config["_cov_fn_factory"]
+            _cov_fn = _factory(
+                self,
+                K=self.config.get("cov_K", 8),
+                q_low=self.config.get("cov_q_low", 0.05),
+                q_high=self.config.get("cov_q_high", 0.90),
+            )
+            actor_loss_fn = partial(_cov_fn, batch)
+        else:
+            actor_loss_fn = partial(self.policy_loss_fn, batch)
+
         return {
             "critic": partial(self.critic_loss_fn, batch),
-            "actor": partial(self.policy_loss_fn, batch),
+            "actor": actor_loss_fn,
             "temperature": partial(self.temperature_loss_fn, batch),
         }
 

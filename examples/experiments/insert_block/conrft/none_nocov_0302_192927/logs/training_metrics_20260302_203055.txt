@@ -1,0 +1,44 @@
+Training started at step 0
+Timestamp: 2026-03-02 20:30:55
+================================================================================
+
+[Pretrain] Step 0:
+
+[Pretrain] Step 10:
+
+[Pretrain] Step 20:
+
+[Pretrain] Step 30:
+
+[Pretrain] Step 40:
+
+[Pretrain] Step 50:
+
+[Pretrain] Step 60:
+
+[Pretrain] Step 70:
+
+[Pretrain] Step 80:
+
+[Pretrain] Step 90:
+
+[Pretrain] Step 100:
+
+[Pretrain] Step 110:
+
+[Pretrain] Step 120:
+
+[Pretrain] Step 130:
+
+[Pretrain] Step 140:
+
+[Pretrain] Step 150:
+
+[Pretrain] Step 160:
+
+[Pretrain] Step 170:
+
+[Pretrain] Step 180:
+
+[Pretrain] Step 190:
+

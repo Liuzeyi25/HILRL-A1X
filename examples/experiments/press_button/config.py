@@ -64,7 +64,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     # Image cropping functions
     IMAGE_CROP = {
         "wrist_1": lambda img: img,
-        "side_policy_256": lambda img: img,
+        "side_policy_256": lambda img: img[:, 198:-79],
         # side_classifier not available on this machine; leave commented out
         # "side_classifier": lambda img: img[390:-150, 420:-700],
         # "demo": lambda img: img[50:-150, 400:-400]
@@ -77,19 +77,25 @@ class EnvConfig(DefaultA1XEnvConfig):
     TARGET_JOINT_STATE = np.array([0.7306, 2.2, -1.3127, 0.5768, -0.0374, 0.3708, 100.0])  # 抓取位置 (7维)
     USE_GRIPPER = False 
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([-0.00851063829787234, 1.7708510638297872, -0.08212765957446809, -1.3238297872340425, -0.15723404255319148, 0.0451063829787234, 100.0])  # 夹爪张开
+#     - 0.6493617021276595
+# - 1.9906382978723405sss
+# - -1.0414893617021277
+# - 0.16531914893617022
+# - -1.1453191489361703
+# - 1.054468085106383
+    RESET_JOINT_STATE = np.array([0.6493617021276595, 1.9906382978723405, -1.0414893617021277, 0.16531914893617022, -1.1453191489361703, 1.054468085106383, 100.0])  # 夹爪张开
     ACTION_SPACE = gym.spaces.Box(
-        low=np.array([-0.002, -0.002, -0.002, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-        high=np.array([0.002, 0.002, 0.002, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
+        low=np.array([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32),
+        high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
     )
+    RESET_SETTLE_TIME = 3.0  # 重置后等待环境稳定的时间（秒）
     # 奖励阈值 (每个关节的容差) - 可调整使检测更宽松
     # 前6个是关节角度(弧度),最后一个是夹爪位置(mm)
     # 增大数值使成功检测更容易触发
     REWARD_THRESHOLD = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 20.0])  # 更宽松的阈值
-    
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0]) # [x y z roll pitch yaw gripper]
+    ACTION_SCALE = np.array([0.005, 0.005, 0.005, 0.0, 0.0, 0.0, 0.2]) # [x y z roll pitch yaw gripper]
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
@@ -99,7 +105,7 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # Display and Control
     DISPLAY_IMAGE = True
-    MAX_EPISODE_LENGTH = 1000
+    MAX_EPISODE_LENGTH = 500
     
     # Random Reset
     RANDOM_RESET = False
@@ -132,7 +138,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Take out the bread"
+    task_desc = "press the button of the bread machine"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/dungeon_master/conrft/octo_model/octo-small-1.5"

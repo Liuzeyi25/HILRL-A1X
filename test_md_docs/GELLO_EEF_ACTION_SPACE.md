@@ -213,8 +213,8 @@ next_obs, rew, done, truncated, info = env.step(actions)
 # 优先使用delta EEF动作
 if "intervene_action_eef" in info:
     actions = info["intervene_action_eef"]  # ✅ [dx,dy,dz,drx,dry,drz,gripper_abs]
-elif "intervene_action" in info:
-    actions = info["intervene_action"]      # Fallback: delta joint
+elif "intervene_action_eef" in info:
+    actions = info["intervene_action_eef"]      # Fallback: delta joint
 
 transition = dict(
     observations=obs,

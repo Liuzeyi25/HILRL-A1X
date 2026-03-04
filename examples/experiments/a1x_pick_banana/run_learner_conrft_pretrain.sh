@@ -8,9 +8,9 @@ python ../../train_conrft_octo.py "$@" \
     --exp_name=a1x_pick_banana \
     --q_weight=0.1 \
     --bc_weight=1.0 \
-    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft/0207 \
-    --demo_path=./demo_data/20260209/a1x_pick_banana_18_demos.pkl \
-    --pretrain_steps=40000 \
+    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/conrft/0225 \
+    --demo_path=./demo_data/20260225/traj_20_0225.pkl\
+    --pretrain_steps=100000 \
     --debug=False \
     --learner 
 

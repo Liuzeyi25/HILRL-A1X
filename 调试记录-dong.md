@@ -17,7 +17,7 @@
 ```
 2. rostopic话题
 ```bash
-ros2 topic echo /hdas/pose_ee_arm
+ ros2 topic echo /hdas/feedback_arm  
 ```
 3. gello跟随模式
 ```bash
@@ -25,52 +25,78 @@ ros2 topic echo /hdas/pose_ee_arm
 ➜  gello_software git:(main) ✗ source .venv/bin/activate
 (gello_software) ➜  gello_software git:(main) ✗ python experiments/launch_yaml.py --left-config-path configs/yam_A1_X.yaml
 ```
-1. 夹香蕉采数据
+4. 裁减图像
+
+```bash
+cd /home/dungeon_master/conrft
+python visualize_camera_crop_interactive.py 
+
+```
+
+5. 夹香蕉采数据
 ```bash
 cd /home/dungeon_master/conrft
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
-###香蕉0.005
+###
 
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name a1x_pick_banana \
-     --successes_needed 30 \
-     --demo_data_subdir 20260216
+     --successes_needed 20 \
+     --demo_data_subdir 20260229
 
 ##0.001
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
-     --exp_name insert_block \
+     --exp_name wipe_whiteboard \
      --successes_needed 1  \
-     --demo_data_subdir 20260213
+     --demo_data_subdir 20260229
 
 ##0.002
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
-     --exp_name insert_network_cable \
+     --exp_name press_button \
      --successes_needed 2  \
-     --demo_data_subdir 20260218
+     --demo_data_subdir 20260228
 
 ##0.002
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
      --exp_name fold_towel \
      --successes_needed 2  \
-     --demo_data_subdir 20260218
+     --demo_data_subdir 20260229
 
 python /home/dungeon_master/conrft/examples/record_demos_octo_manual_new.py \
-     --exp_name toast_bread \
+     --exp_name insert_block \
      --successes_needed 2  \
-     --demo_data_subdir 20260218
+     --demo_data_subdir 20260302
 ```
 2. 检查数据
 
 ```bash
 python /home/dungeon_master/conrft/examples/diagnose_bc_loss.py \
-  --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260216/traj_002_2026-02-16_15-40-13.pkl \
-  --exp_name=a   \
+  --demo_path=/home/dungeon_master/conrft/examples/experiments/insert_block/conrft/0224/demo_buffer/transitions_871.pkl \
   --detailed 
 
+```
+合并数据
+第一个路径为需要合并的文件目录，会递归目录下的所有pkl文件，第二个路径为合并后文件锁存放的路径
+```bash 
+cd /home/dungeon_master/conrft/examples
+python merge_trajectories.py \
+       /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260301\
+       /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260301/traj_10.pkl 
+```
+
+cd /home/dungeon_master/conrft/examples
+python merge_trajectories.py \
+       /home/dungeon_master/conrft/examples/experiments/insert_block/demo_data/2026022 \
+       /home/dungeon_master/conrft/examples/experiments/insert_block/demo_data/20260227/traj_11.pkl 
+examples/experiments/insert_block/demo_data/20260227/traj_010_2026-02-26_21-35-59.pkl
+传到服务器上
+
+```bash
+scp -r -P 34802  /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260222/traj_20.pkl \
+e230112@10.97.216.208:/home/e230112/Safevla_RL2/examples/experiments/a1x_pick_banana/demo_data/0222
 
 
 ```
-
 
 3.在线训练
 actor启动 
@@ -79,16 +105,25 @@ actor启动
 ```bash
  conda activate conrft
 cd /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana  ###进入对应任务的目录下
-bash run_actor_conrft.sh
+f
 
 ```
 learner启动
 远程连接193.193.193.201
 ```bash
  conda activate conrft
-cd /home/luka/Haoyuan/Safevla_RL/examples/experiments/a1x_pick_banana  ###进入对应任务的目录下
+cd /home/dungeon_master/conrft/examples/experiments/a1x_pick_banana  ###进入对应任务的目录下
 xvfb-run -a bash run_learner_conrft.sh
 ```
+
+
+
+
+
+
+
+
+
 在run_learner_conrft.sh
 ```python
 
@@ -111,7 +146,7 @@ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:
 采集脚本时需要使用上述命令
 [ ] 加入环境激活中(未完成)
 
-5. 
+1. 
 
 
 ## 一些变量的定位
@@ -422,8 +457,100 @@ a1x_env.py
     scaled_action[3:6] = 0.0  # 强制 drx, dry, drz = 0
 ``` 
 
+### 采数据action流向
+1. spacemouse硬件读取
+/home/dungeon_master/conrft/serl_robot_infra/franka_env/spacemouse/spacemouse_expert.py
+
+```python
+class SpaceMouseExpert:
+    def _read_spacemouse(self):
+        """后台进程：持续读取 SpaceMouse 硬件"""
+        while True:
+            state = pyspacemouse.read_all()  # 🔌 从 USB 设备读取
+            
+            # 坐标转换（硬件坐标 → 机器人坐标）
+            action = [
+                -state[0].y, state[0].x, state[0].z,      # 位置 [m]
+                -state[0].roll, -state[0].pitch, -state[0].yaw  # 旋转 [rad]
+            ]
+            buttons = state[0].buttons  # 左右按钮
+            
+            # 保存到共享内存
+            self.latest_data["action"] = action
+            self.latest_data["buttons"] = buttons
+```
+2. Wrappers获取动作
+/home/dungeon_master/conrft/serl_robot_infra/franka_env/envs/wrappers.py
+
+```python
+class SpacemouseIntervention:
+    def action(self, action):
+        """每次 step 调用"""
+        # ① 从 SpaceMouse 硬件读取最新动作
+        expert_a, buttons = self.expert.get_action()  # [6维 EEF delta]
+        
+        # ② 死区过滤（避免小漂移被识别为干预）
+        pos_norm = np.linalg.norm(expert_a[:3])   # 位置范数
+        rot_norm = np.linalg.norm(expert_a[3:6])  # 旋转范数
+        intervened = (pos_norm > 0.001 or rot_norm > 0.001)
+        
+        # ③ 处理夹爪（按钮）
+        if self.left:   # 左键 = 关闭夹爪
+            gripper_action = np.random.uniform(-0.2, -0.15, size=(1,))
+        elif self.right:  # 右键 = 打开夹爪
+            gripper_action = np.random.uniform(0.15, 0.2, size=(1,))
+        else:
+            gripper_action = np.zeros((1,))
+        
+        expert_a = np.concatenate((expert_a, gripper_action))  # [7维]
+        
+        # ④ 裁剪到动作空间 + 缩放
+        expert_a = np.clip(expert_a, self.action_space.low, self.action_space.high)
+        expert_a = expert_a * self.action_scale
+        
+        return expert_a, True  # 返回处理后的动作
+```
+
+3. wrappers中的step函数将action传进info ，录制脚本读取
+```python 
+def step(self, action):
+    # ① 获取 SpaceMouse 动作（替换策略动作）
+    new_action, replaced = self.action(action)
+    
+    # ② 执行动作
+    obs, rew, done, truncated, info = self.env.step(new_action)
+    
+    # ③ 如果有干预，保存到 info
+    if replaced:
+        info["intervene_action_eef"] = new_action  # ✅ EEF delta 动作
+    
+    info["left"] = self.left    # 夹爪按钮状态
+    info["right"] = self.right
+    
+    return obs, rew, done, truncated, info
+```
+```python
+next_obs, rew, done, truncated, info = env.step(dummy_action)
+
+# 从 info 读取 SpaceMouse 的真实动作
+if "intervene_action_eef" in info:
+    actions = info["intervene_action_eef"]  # ✅ SpaceMouse 的 EEF delta
+```
 
   Host 6000pro
     HostName 10.97.216.208
     User e230112
     Port 34802
+
+### 样本标记区分改动
+
+改动了三个文件：
+
+serl_launcher/data/memory_efficient_replay_buffer.py — 新增 include_label 参数并透传给父类 ReplayBuffer（父类已有该字段的存储逻辑）
+
+train_rlpd.py — 四处修改：
+
+actor train_rlpd.py:198：transition 字典中加入 labels=2 if already_intervened else 1
+learner replay_buffer创建 train_rlpd.py:442：加 include_label=True
+learner demo_buffer创建 train_rlpd.py:461：加 include_label=True，加载 FLAGS.demo_path 时强制设 labels=0
+加载历史 checkpoint buffer train_rlpd.py:485：用 setdefault 兼容旧格式文件（无标签时分别默认 1/2）
