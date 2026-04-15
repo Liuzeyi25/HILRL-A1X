@@ -331,7 +331,279 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             grad_params=params,
         )
         return temperature_loss, {"temperature_loss": temperature_loss}
-    
+
+    # =========================================================================
+    # [HIL-SERL Module 2] 偏好感知 Q 值修正损失（Hybrid Single Arm 版本）
+    # =========================================================================
+
+    def corrected_critic_loss_fn(
+        self,
+        batch,
+        A_cf: jnp.ndarray,
+        params: Params,
+        rng: PRNGKey,
+    ):
+        """
+        Module 2: 偏好感知 Q 值修正（SACAgentHybridSingleArm 版本）。
+
+        修正后 Bellman 目标：
+            ỹ_t = y_t - α(t) · A_cf
+
+        - α(t) = batch["alpha_weight"]，actor 端预计算
+        - A_cf = max(0, mean[Q_tgt(s,a^h) - Q_tgt(s,a^π)])，外部 stop-gradient 传入
+
+        该 agent 无 fix_gripper 配置，连续动作始终取 actions[..., :-1]。
+        """
+        batch_size = batch["rewards"].shape[0]
+        rng, next_action_sample_key = jax.random.split(rng)
+        next_actions, next_actions_log_probs = self._compute_next_actions(
+            batch, next_action_sample_key
+        )
+
+        # 标准 Bellman 目标
+        target_next_qs = self.forward_target_critic(
+            batch["next_observations"], next_actions, rng=rng,
+        )
+        if self.config["critic_subsample_size"] is not None:
+            rng, subsample_key = jax.random.split(rng)
+            subsample_idcs = jax.random.randint(
+                subsample_key,
+                (self.config["critic_subsample_size"],),
+                0,
+                self.config["critic_ensemble_size"],
+            )
+            target_next_qs = target_next_qs[subsample_idcs]
+
+        target_next_min_q = target_next_qs.min(axis=0)
+        chex.assert_shape(target_next_min_q, (batch_size,))
+
+        target_q = (
+            batch["rewards"]
+            + self.config["discount"] * batch["masks"] * target_next_min_q
+        )
+        chex.assert_shape(target_q, (batch_size,))
+
+        if self.config["backup_entropy"]:
+            temperature = self.forward_temperature()
+            target_q = target_q - temperature * next_actions_log_probs
+
+        # Module 2 核心：位置感知衰减修正
+        # 数学形式：y_tilde_t = y_t - alpha(t) * A_cf
+        #   y_t       : 标准 Bellman 目标（温度修正后）
+        #   alpha(t)  : 位置感知权重，次优片段 [t_a, t_i] 内 = exp(-lam*(t_i-t))，其余 = 0
+        #   A_cf      : 反事实优势 = max(0, mean_batch[Q(s,a^h) - Q(s,a^pi)])
+        # 作用：将次优片段内的 Q 目标值向下偏移，促使 Critic 学会"次优状态价值较低"
+        alpha_weights = batch["alpha_weight"]   # (batch_size,)
+        chex.assert_shape(alpha_weights, (batch_size,))
+        corrected_target_q = target_q - alpha_weights * A_cf
+        chex.assert_shape(corrected_target_q, (batch_size,))
+
+        # 该 agent 始终截断 [..:-1]（与 critic_loss_fn 保持一致，无 fix_gripper 开关）
+        actions = batch["actions"][..., :-1]
+        predicted_qs = self.forward_critic(
+            batch["observations"], actions, rng=rng, grad_params=params
+        )
+        chex.assert_shape(predicted_qs, (self.config["critic_ensemble_size"], batch_size))
+        target_qs = corrected_target_q[None].repeat(self.config["critic_ensemble_size"], axis=0)
+        chex.assert_equal_shape([predicted_qs, target_qs])
+        critic_loss = jnp.mean((predicted_qs - target_qs) ** 2)
+
+        correction_magnitude = jnp.mean(alpha_weights * A_cf)
+        correction_ratio = correction_magnitude / (jnp.mean(jnp.abs(target_q)) + 1e-8)
+
+        info = {
+            "corrected_critic_loss": critic_loss,
+            "predicted_qs": jnp.mean(predicted_qs),
+            "corrected_target_qs": jnp.mean(corrected_target_q),
+            "uncorrected_target_qs": jnp.mean(target_q),
+            "A_cf": A_cf,
+            "mean_alpha_weight": jnp.mean(alpha_weights),
+            "correction_magnitude": correction_magnitude,
+            "correction_ratio": correction_ratio,
+            "rewards": batch["rewards"].mean(),
+        }
+        return critic_loss, info
+
+    # =========================================================================
+    # [HIL-SERL Module 3] 偏好引导策略学习损失（Hybrid Single Arm 版本）
+    # =========================================================================
+
+    def contrastive_policy_loss_fn(
+        self,
+        batch,
+        preference_batch,
+        params: Params,
+        rng: PRNGKey,
+    ):
+        """
+        Module 3: ORPO 风格对比 Actor 损失（SACAgentHybridSingleArm 版本）。
+
+        L_actor = L_RLPD + β · L_contrast
+        L_contrast = -E[log π(a^h|s) - log π(a^π|s)]
+
+        preference_batch 中的 human_actions / policy_actions 含 gripper 维，
+        传给连续策略前截断 [..:-1]。
+        """
+        batch_size = batch["rewards"].shape[0]
+        pref_size = preference_batch["human_actions"].shape[0]
+
+        # 标准 SAC Actor 损失
+        temperature = self.forward_temperature()
+        rng, policy_rng, sample_rng, critic_rng = jax.random.split(rng, 4)
+
+        action_distributions = self.forward_policy(
+            batch["observations"], rng=policy_rng, grad_params=params
+        )
+        actions, log_probs = action_distributions.sample_and_log_prob(seed=sample_rng)
+        predicted_qs = self.forward_critic(batch["observations"], actions, rng=critic_rng)
+        predicted_q = predicted_qs.mean(axis=0)
+        chex.assert_shape(predicted_q, (batch_size,))
+        chex.assert_shape(log_probs, (batch_size,))
+
+        rlpd_loss = -jnp.mean(predicted_q - temperature * log_probs)
+
+        # Module 3 核心：对比项
+        rng, pref_rng = jax.random.split(rng)
+        pref_distributions = self.forward_policy(
+            preference_batch["observations"], rng=pref_rng, grad_params=params
+        )
+
+        # Hybrid agent：连续策略输出 (action_dim-1) 维，preference 动作截断 [..:-1]
+        human_a  = preference_batch["human_actions"][..., :-1]
+        policy_a = preference_batch["policy_actions"][..., :-1]
+
+        log_prob_human  = pref_distributions.log_prob(human_a)   # (pref_size,)
+        log_prob_policy = pref_distributions.log_prob(policy_a)  # (pref_size,)
+        chex.assert_shape(log_prob_human,  (pref_size,))
+        chex.assert_shape(log_prob_policy, (pref_size,))
+
+        # Module 3 核心：ORPO 风格对比损失
+        # L_contrast = -E[log pi(a^h | s) - log pi(a^pi | s)]
+        # 最小化 L_contrast 等价于最大化 log pi(a^h|s) - log pi(a^pi|s)
+        # 即：提高策略对人类动作的似然，同时相对降低对历史次优动作的似然
+        # 注意：仅对 continuous arm 动作计算（已通过 [..:-1] 截断，不含 grasp 维度）
+        contrastive_loss = -jnp.mean(log_prob_human - log_prob_policy)
+        contrastive_coef = self.config.get("contrastive_coef", 0.1)
+        total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
+
+        info = {
+            "actor_loss": total_actor_loss,
+            "rlpd_actor_loss": rlpd_loss,
+            "contrastive_loss": contrastive_loss,
+            "temperature": temperature,
+            "entropy": -log_probs.mean(),
+            "log_prob_human": log_prob_human.mean(),
+            "log_prob_policy_hist": log_prob_policy.mean(),
+            "log_prob_gap": (log_prob_human - log_prob_policy).mean(),
+        }
+        return total_actor_loss, info
+
+    # =========================================================================
+    # [HIL-SERL] 联合更新：Module 2 + Module 3（含 grasp_critic）
+    # =========================================================================
+
+    @partial(jax.jit, static_argnames=("pmap_axis", "networks_to_update"))
+    def update_with_correction(
+        self,
+        batch,
+        preference_batch,
+        *,
+        pmap_axis=None,
+        networks_to_update=frozenset({"actor", "critic", "grasp_critic", "temperature"}),
+    ):
+        """
+        同时应用 Module 2（Q 值修正）和 Module 3（对比策略学习）。
+
+        相比 SACAgent 版本：
+          - grasp_critic 使用标准 grasp_critic_loss_fn（无连续动作修正）
+          - 默认 networks_to_update 包含 grasp_critic
+          - preference 动作始终截断 [..:-1]（无 fix_gripper 分支）
+        """
+        batch_size = batch["rewards"].shape[0]
+        chex.assert_tree_shape_prefix(batch, (batch_size,))
+
+        if self.config["image_keys"][0] not in batch["next_observations"]:
+            batch = _unpack(batch)
+
+        rng, aug_rng = jax.random.split(self.state.rng)
+        if (
+            "augmentation_function" in self.config.keys()
+            and self.config["augmentation_function"] is not None
+        ):
+            batch = self.config["augmentation_function"](batch, aug_rng)
+
+        batch = batch.copy(
+            add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]}
+        )
+
+        # Step 1: 用 target network 计算 A_cf（stop-gradient）
+        # Hybrid agent 始终截断 [..:-1]
+        rng, cf_rng = jax.random.split(rng)
+        h_actions = preference_batch["human_actions"][..., :-1]
+        p_actions = preference_batch["policy_actions"][..., :-1]
+
+        q_human_ensemble = self.forward_target_critic(
+            preference_batch["observations"], h_actions, rng=cf_rng,
+        )  # (ensemble_size, pref_batch_size)
+        q_human_min = q_human_ensemble.min(axis=0)
+
+        q_policy_ensemble = self.forward_target_critic(
+            preference_batch["observations"], p_actions, rng=cf_rng,
+        )
+        q_policy_min = q_policy_ensemble.min(axis=0)
+
+        # stop_gradient 的必要性：
+        # A_cf 是"目标修正量"，若允许梯度回传，优化器会通过缩小
+        # Q_human 和 Q_policy 的差距来最小化修正项（投机捷径），
+        # 而非真正调整策略使其模仿人类动作。
+        # max(0, ...) 确保 A_cf >= 0：只有人类动作明确优于当前策略时才向下修正 Q 值。
+        # 注意：grasp_critic 不参与 A_cf 计算（离散抓取价值与连续动作修正分离）。
+        A_cf = jax.lax.stop_gradient(
+            jnp.maximum(0.0, jnp.mean(q_human_min - q_policy_min))
+        )
+
+        # Step 2: 构造修正后的 loss_fns（grasp_critic 使用标准损失）
+        def _corrected_critic(params, rng):
+            return self.corrected_critic_loss_fn(batch, A_cf, params, rng)
+
+        def _contrastive_actor(params, rng):
+            return self.contrastive_policy_loss_fn(batch, preference_batch, params, rng)
+
+        loss_fns = {
+            "critic":       _corrected_critic,
+            "grasp_critic": partial(self.grasp_critic_loss_fn, batch),
+            "actor":        _contrastive_actor,
+            "temperature":  partial(self.temperature_loss_fn, batch),
+        }
+
+        assert networks_to_update.issubset(loss_fns.keys()), (
+            f"Invalid gradient steps: {networks_to_update}"
+        )
+        for key in loss_fns.keys() - networks_to_update:
+            loss_fns[key] = lambda params, rng: (0.0, {})
+
+        new_state, info = self.state.apply_loss_fns(
+            loss_fns, pmap_axis=pmap_axis, has_aux=True
+        )
+
+        if "critic" in networks_to_update:
+            new_state = new_state.target_update(self.config["soft_target_update_rate"])
+
+        new_state = new_state.replace(rng=rng)
+
+        for name, opt_state in new_state.opt_states.items():
+            if (
+                hasattr(opt_state, "hyperparams")
+                and "learning_rate" in opt_state.hyperparams.keys()
+            ):
+                info[f"{name}_lr"] = opt_state.hyperparams["learning_rate"]
+
+        info["q_human_mean"]  = jnp.mean(q_human_min)
+        info["q_policy_mean"] = jnp.mean(q_policy_min)
+        info["q_gap_mean"]    = jnp.mean(q_human_min - q_policy_min)
+
+        return self.replace(state=new_state), info
+
     def loss_fns(self, batch):
         # 如果 config 中启用了 cov_actor_loss，使用协方差熵截断 Actor Loss
         # 工厂函数由 train_rlpd.py 注入至 config["_cov_fn_factory"]，避免在包内 import examples 目录

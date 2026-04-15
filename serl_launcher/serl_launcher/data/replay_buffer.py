@@ -45,6 +45,7 @@ class ReplayBuffer(Dataset):
         include_grasp_penalty: Optional[bool] = False,
         include_octo_embeddings: Optional[bool] = False,
         include_mc_returns: Optional[bool] = False,
+        include_alpha_correction: Optional[bool] = False,
     ):
         if next_observation_space is None:
             next_observation_space = observation_space
@@ -62,7 +63,15 @@ class ReplayBuffer(Dataset):
         
         if include_mc_returns:
             dataset_dict['mc_returns'] = np.empty((capacity,), dtype=np.float32)
-        
+
+        # [HIL-SERL Module 2] 位置感知衰减权重 alpha(t)
+        # 语义：次优片段 [t_a, t_i] 内 alpha(t) = exp(-lam*(t_i - t))，其余步 alpha = 0.0
+        # 使用 np.zeros 初始化（而非 np.empty）：确保未被 actor 赋值的 slot 默认为
+        # "无修正"状态（0.0），避免 Critic 更新受到随机垃圾值干扰。
+        # 真实值由 actor 端 compute_episode_alpha_weights() 在 episode 结束时批量写入。
+        if include_alpha_correction:
+            dataset_dict['alpha_weight'] = np.zeros((capacity,), dtype=np.float32)
+
         if include_octo_embeddings:
             dataset_dict['embeddings'] = np.empty((capacity, 384), dtype=np.float32)
             dataset_dict['next_embeddings'] = np.empty((capacity, 384), dtype=np.float32)

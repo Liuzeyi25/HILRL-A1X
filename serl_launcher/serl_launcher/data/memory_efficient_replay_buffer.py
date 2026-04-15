@@ -21,6 +21,7 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
         include_octo_embeddings: Optional[bool] = False,
         include_mc_returns: Optional[bool] = False,
         include_label: Optional[bool] = False,
+        include_alpha_correction: Optional[bool] = False,
     ):
         self.pixel_keys = pixel_keys
 
@@ -48,6 +49,10 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
         self._first = True
         self._is_correct_index = np.full(capacity, False, dtype=bool)
 
+        # include_alpha_correction 透传至 ReplayBuffer.__init__()：
+        # 在底层 dataset_dict 中创建 alpha_weight 字段（float32, 默认 0.0）。
+        # 此类模块只负责图像帧堆叠和内存高效存储（像素观测专用），
+        # 所有其他语义参数均直接透传，不做额外处理。
         super().__init__(
             observation_space,
             action_space,
@@ -58,6 +63,7 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
             include_octo_embeddings=include_octo_embeddings,
             include_mc_returns=include_mc_returns,
             include_label=include_label,
+            include_alpha_correction=include_alpha_correction,
         )
 
     def insert(self, data_dict: DatasetDict):

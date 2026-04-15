@@ -1,8 +1,11 @@
+from collections import deque
 from threading import Lock
-from typing import Union, Iterable
+from typing import Union, Iterable, Optional
 
 import gymnasium as gym
 import jax
+import numpy as np
+from flax.core import frozen_dict
 from serl_launcher.data.replay_buffer import ReplayBuffer
 from serl_launcher.data.memory_efficient_replay_buffer import (
     MemoryEfficientReplayBuffer,
@@ -48,10 +51,14 @@ class MemoryEfficientReplayBufferDataStore(MemoryEfficientReplayBuffer, DataStor
         action_space: gym.Space,
         capacity: int,
         image_keys: Iterable[str] = ("image",),
+        include_alpha_correction: bool = False,
         **kwargs,
     ):
         MemoryEfficientReplayBuffer.__init__(
-            self, observation_space, action_space, capacity, pixel_keys=image_keys, **kwargs
+            self, observation_space, action_space, capacity,
+            pixel_keys=image_keys,
+            include_alpha_correction=include_alpha_correction,
+            **kwargs
         )
         DataStoreBase.__init__(self, capacity)
         self._lock = Lock()
@@ -135,3 +142,75 @@ def populate_data_store_with_z_axis_only(
                 data_store.insert(tmp)
         print(f"Loaded {len(data_store)} transitions.")
     return data_store
+
+
+# =============================================================================
+# [HIL-SERL Module 3] 偏好学习缓冲区
+# =============================================================================
+
+class PreferenceBufferDataStore(DataStoreBase):
+    """
+    轻量级干预偏好对缓冲区，存储 Module 3（偏好引导策略学习）所需数据。
+
+    每条数据代表一个干预事件的起始时刻 t_i，包含：
+      - observations:   s_{t_i}，干预发生时的状态（包含图像，stacked obs）
+      - human_actions:  a^h，操作员给出的替代动作
+      - policy_actions: a^π，当前策略在 s_{t_i} 处采样的原始动作（干预前保存）
+
+    Module 2 同时使用该缓冲区：通过 target network 前向推断计算反事实优势
+        A_cf = max(0, mean_batch[Q_tgt(s, a^h) - Q_tgt(s, a^π)])
+
+    线程安全：actor 写入（TrainerClient），learner 读取（TrainerServer），Lock 保护。
+    """
+
+    def __init__(self, capacity: int = 5000):
+        super().__init__(capacity)
+        self._capacity = capacity
+        self._buffer: deque = deque(maxlen=capacity)
+        self._lock = Lock()
+
+    def insert(self, data: dict):
+        """
+        插入一条偏好数据。data 需含键：
+          "observations", "human_actions", "policy_actions"
+        """
+        with self._lock:
+            self._buffer.append(data)
+
+    def sample(self, batch_size: int) -> Optional[frozen_dict.FrozenDict]:
+        """
+        随机采样 batch_size 条偏好数据，返回 FrozenDict。
+        若缓冲区数据不足 batch_size，返回 None。
+        """
+        with self._lock:
+            if len(self._buffer) < batch_size:
+                return None
+            indices = np.random.choice(len(self._buffer), size=batch_size, replace=False)
+            items = [self._buffer[i] for i in indices]
+
+        # list-of-dict -> dict-of-array（格式与 MemoryEfficientReplayBuffer.sample 保持一致）
+        # 顶层 key: observations（可能是嵌套字典）、human_actions、policy_actions
+        # 对图像型 observations：每个 sub_key 对应一个摄像头视角，
+        #   np.stack 后形状为 (B, H, W, C) 或 (B, T, H, W, C)（取决于帧堆叠数）
+        # 对连续向量型 key（actions 等）：直接 np.stack 得到 (B, action_dim)
+        batch = {}
+        for key in items[0].keys():
+            vals = [item[key] for item in items]
+            if isinstance(vals[0], dict):
+                # 嵌套字典（如 observations），逐 sub_key 展开
+                batch[key] = {}
+                for sub_key in vals[0].keys():
+                    batch[key][sub_key] = np.stack([v[sub_key] for v in vals], axis=0)
+            else:
+                batch[key] = np.stack(vals, axis=0)
+        return frozen_dict.freeze(batch)
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._buffer)
+
+    def latest_data_id(self) -> int:
+        return len(self)
+
+    def get_latest_data(self, from_id: int):
+        raise NotImplementedError
