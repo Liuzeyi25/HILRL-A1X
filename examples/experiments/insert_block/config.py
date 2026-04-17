@@ -89,14 +89,9 @@ class EnvConfig(DefaultA1XEnvConfig):
     USE_GRIPPER = False  # 是否使用夹爪控制
     RESET_SETTLE_TIME = 2.0  # 重置后等待时间（秒），确保环境稳定
 
-    # ACTION_SPACE = gym.spaces.Box(
-    #     low=np.array([-0.001, -0.001, -0.001, -0.01, -0.01, -0.01, -0.2], dtype=np.float32),
-    #     high=np.array([0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.2], dtype=np.float32),
-    # )
     ACTION_SPACE = gym.spaces.Box(
-        low=np.ones((7,)) * -1.0,
-        high=np.ones((7,)) * 1.0,
-        dtype=np.float32,
+        low=np.ones((7,), dtype=np.float32) * -1.0,
+        high=np.ones((7,), dtype=np.float32) * 1.0,
     )
      
     
@@ -108,7 +103,10 @@ class EnvConfig(DefaultA1XEnvConfig):
     
     # 动作缩放 - 控制每步的最大变化量
     # haoyuan for action scale tuning
-    ACTION_SCALE = np.array([0.003, 0.003, 0.003, 0.0, 0.0, 0.0, 0]) # [x y z roll pitch yaw gripper]
+    # [x,    y,     z,     roll, pitch, yaw,  gripper]
+    # 夹爪不动：最后一位设为 0.0（fixed gripper 任务）
+    # 夹爪可控：最后一位改为非 0，如 1.0（learned gripper 任务）
+    ACTION_SCALE = np.array([0.003, 0.003, 0.003, 0.0, 0.0, 0.0, 0.0])
     # ACTION_SCALE: np.ndarray = np.ones((7,))  # Scaling for joint actions
     
     # 关节限制 (安全范围)
