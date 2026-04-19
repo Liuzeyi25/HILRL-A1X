@@ -313,7 +313,8 @@ class SACAgent(flax.struct.PyTreeNode):
         # 作用：将次优片段内的 Q 目标值向下偏移，促使 Critic 学会"次优状态价值较低"
         alpha_weights = batch["alpha_weight"]   # (batch_size,)
         chex.assert_shape(alpha_weights, (batch_size,))
-        corrected_target_q = target_q - alpha_weights * A_cf
+        A_cf_vec = jnp.broadcast_to(A_cf, alpha_weights.shape)
+        corrected_target_q = target_q - alpha_weights * A_cf_vec
         chex.assert_shape(corrected_target_q, (batch_size,))
 
         # fix_gripper 兼容（与 critic_loss_fn 一致）
@@ -326,17 +327,20 @@ class SACAgent(flax.struct.PyTreeNode):
         chex.assert_equal_shape([predicted_qs, target_qs])
         critic_loss = jnp.mean((predicted_qs - target_qs) ** 2)
 
-        correction = alpha_weights * A_cf
+        correction = alpha_weights * A_cf_vec
         correction_magnitude = jnp.mean(correction)
         correction_ratio = correction_magnitude / (jnp.mean(jnp.abs(target_q)) + 1e-8)
+        alpha_nonzero_ratio = jnp.mean(alpha_weights > 0.0)
 
         info = {
             "corrected_critic_loss": critic_loss,
             "predicted_qs": jnp.mean(predicted_qs),
             "corrected_target_qs": jnp.mean(corrected_target_q),
             "uncorrected_target_qs": jnp.mean(target_q),
-            "A_cf": A_cf,
+            "A_cf": jnp.mean(A_cf_vec),
+            "A_cf_nonzero_ratio": jnp.mean(A_cf_vec > 0.0),
             "mean_alpha_weight": jnp.mean(alpha_weights),
+            "alpha_nonzero_ratio": alpha_nonzero_ratio,
             "correction_magnitude": correction_magnitude,
             "correction_ratio": correction_ratio,
             "rewards": batch["rewards"].mean(),
@@ -413,6 +417,9 @@ class SACAgent(flax.struct.PyTreeNode):
         contrastive_loss = -jnp.mean(jax.nn.log_sigmoid(log_prob_gap))
         contrastive_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
+        pref_action_l2_mean = jnp.mean(
+            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1)
+        )
 
         info = {
             "actor_loss": total_actor_loss,
@@ -423,6 +430,7 @@ class SACAgent(flax.struct.PyTreeNode):
             "log_prob_human": log_prob_human.mean(),
             "log_prob_policy_hist": log_prob_policy.mean(),
             "log_prob_gap": log_prob_gap.mean(),
+            "pref_action_l2_mean": pref_action_l2_mean,
             "contrastive_human_edge_ratio": human_edge_ratio,
             "contrastive_policy_edge_ratio": policy_edge_ratio,
         }
@@ -501,13 +509,30 @@ class SACAgent(flax.struct.PyTreeNode):
         # Q_human 和 Q_policy 的差距来最小化修正项（投机捷径），
         # 而非真正调整策略使其模仿人类动作。
         # max(0, ...) 确保 A_cf >= 0：只有人类动作明确优于当前策略时才向下修正 Q 值。
-        A_cf = jax.lax.stop_gradient(
-            jnp.maximum(0.0, jnp.mean(q_human_min - q_policy_min))
-        )
+        q_gap_raw = q_human_min - q_policy_min
+        A_cf_raw = jnp.mean(q_gap_raw)
+
+        # 默认回退：全局标量 A_cf（兼容无 segment_ids 的旧数据）
+        A_cf = jax.lax.stop_gradient(jnp.maximum(0.0, A_cf_raw))
+        A_cf_batch = jnp.broadcast_to(A_cf, batch["rewards"].shape)
+
+        # 按段 A_cf：对每个 segment_id，使用该段偏好样本独立估计 A_cf 并映射到 batch 每条 transition
+        if ("segment_ids" in preference_batch) and ("segment_ids" in batch):
+            pref_seg_ids = preference_batch["segment_ids"].astype(jnp.int32)  # (P,)
+            batch_seg_ids = batch["segment_ids"].astype(jnp.int32)            # (B,)
+
+            q_gap_pos = jnp.maximum(0.0, q_gap_raw)                             # (P,)
+            seg_match = (pref_seg_ids[:, None] == batch_seg_ids[None, :]) & (pref_seg_ids[:, None] >= 0)
+            seg_match_f = seg_match.astype(q_gap_pos.dtype)                     # (P, B)
+
+            num = jnp.sum(seg_match_f * q_gap_pos[:, None], axis=0)             # (B,)
+            den = jnp.sum(seg_match_f, axis=0)                                   # (B,)
+            A_cf_batch_raw = jnp.where(den > 0, num / (den + 1e-8), 0.0)         # (B,)
+            A_cf_batch = jax.lax.stop_gradient(A_cf_batch_raw)
 
         # Step 2: 构造修正后的 loss_fns
         def _corrected_critic(params, rng):
-            return self.corrected_critic_loss_fn(batch, A_cf, params, rng)
+            return self.corrected_critic_loss_fn(batch, A_cf_batch, params, rng)
 
         def _contrastive_actor(params, rng):
             return self.contrastive_policy_loss_fn(batch, preference_batch, params, rng)
@@ -540,9 +565,13 @@ class SACAgent(flax.struct.PyTreeNode):
             ):
                 info[f"{name}_lr"] = opt_state.hyperparams["learning_rate"]
 
-        info["q_human_mean"]  = jnp.mean(q_human_min)
+        info["q_human_mean"] = jnp.mean(q_human_min)
         info["q_policy_mean"] = jnp.mean(q_policy_min)
-        info["q_gap_mean"]    = jnp.mean(q_human_min - q_policy_min)
+        info["q_gap_mean"] = jnp.mean(q_gap_raw)
+        info["q_gap_positive_ratio"] = jnp.mean(q_gap_raw > 0.0)
+        info["A_cf_raw_mean"] = A_cf_raw
+        info["A_cf_batch_mean"] = jnp.mean(A_cf_batch)
+        info["A_cf_batch_nonzero_ratio"] = jnp.mean(A_cf_batch > 0.0)
 
         return self.replace(state=new_state), info
 

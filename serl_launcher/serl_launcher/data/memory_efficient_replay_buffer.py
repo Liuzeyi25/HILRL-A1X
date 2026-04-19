@@ -22,6 +22,7 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
         include_mc_returns: Optional[bool] = False,
         include_label: Optional[bool] = False,
         include_alpha_correction: Optional[bool] = False,
+        include_segment_ids: Optional[bool] = False,
     ):
         self.pixel_keys = pixel_keys
 
@@ -64,6 +65,7 @@ class MemoryEfficientReplayBuffer(ReplayBuffer):
             include_mc_returns=include_mc_returns,
             include_label=include_label,
             include_alpha_correction=include_alpha_correction,
+            include_segment_ids=include_segment_ids,
         )
 
     def insert(self, data_dict: DatasetDict):

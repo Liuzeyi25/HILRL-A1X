@@ -53,12 +53,14 @@ class MemoryEfficientReplayBufferDataStore(MemoryEfficientReplayBuffer, DataStor
         capacity: int,
         image_keys: Iterable[str] = ("image",),
         include_alpha_correction: bool = False,
+        include_segment_ids: bool = False,
         **kwargs,
     ):
         MemoryEfficientReplayBuffer.__init__(
             self, observation_space, action_space, capacity,
             pixel_keys=image_keys,
             include_alpha_correction=include_alpha_correction,
+            include_segment_ids=include_segment_ids,
             **kwargs
         )
         DataStoreBase.__init__(self, capacity)
@@ -157,7 +159,7 @@ class PreferenceBufferDataStore(DataStoreBase):
     每条数据代表一个干预事件的起始时刻 t_i，包含：
       - observations:   s_{t_i}，干预发生时的状态（包含图像，stacked obs）
       - human_actions:  a^h，操作员给出的替代动作
-      - policy_actions: a^π，当前策略在 s_{t_i} 处采样的原始动作（干预前保存）
+            - segment_ids:    当前干预事件对应的次优片段 ID（全局唯一）
 
     Module 2 同时使用该缓冲区：通过 target network 前向推断计算反事实优势
         A_cf = max(0, mean_batch[Q_tgt(s, a^h) - Q_tgt(s, a^π)])
@@ -174,7 +176,7 @@ class PreferenceBufferDataStore(DataStoreBase):
     def insert(self, data: dict):
         """
         插入一条偏好数据。data 需含键：
-          "observations", "human_actions", "policy_actions"
+                    "observations", "human_actions", "segment_ids"
         """
         with self._lock:
             self._buffer.append(data)

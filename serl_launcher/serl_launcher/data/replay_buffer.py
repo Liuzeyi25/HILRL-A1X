@@ -46,6 +46,7 @@ class ReplayBuffer(Dataset):
         include_octo_embeddings: Optional[bool] = False,
         include_mc_returns: Optional[bool] = False,
         include_alpha_correction: Optional[bool] = False,
+        include_segment_ids: Optional[bool] = False,
     ):
         if next_observation_space is None:
             next_observation_space = observation_space
@@ -68,9 +69,16 @@ class ReplayBuffer(Dataset):
         # 语义：次优片段 [t_a, t_i] 内 alpha(t) = exp(-lam*(t_i - t))，其余步 alpha = 0.0
         # 使用 np.zeros 初始化（而非 np.empty）：确保未被 actor 赋值的 slot 默认为
         # "无修正"状态（0.0），避免 Critic 更新受到随机垃圾值干扰。
-        # 真实值由 actor 端 compute_episode_alpha_weights() 在 episode 结束时批量写入。
+    # 真实值由 actor 端 compute_episode_alpha_and_segment_ids() 在 episode 结束时批量写入。
         if include_alpha_correction:
             dataset_dict['alpha_weight'] = np.zeros((capacity,), dtype=np.float32)
+
+        # [HIL-SERL Module 2] 次优片段 ID（用于按段计算 A_cf）
+        # 语义：
+        #   -1 : 非次优片段（或无对应片段）
+        #   >=0: 对应 actor 端识别出的 suboptimal segment 全局唯一 ID
+        if include_segment_ids:
+            dataset_dict['segment_ids'] = np.full((capacity,), -1, dtype=np.int32)
 
         if include_octo_embeddings:
             dataset_dict['embeddings'] = np.empty((capacity, 384), dtype=np.float32)

@@ -92,7 +92,7 @@ flags.DEFINE_float(
     "对比损失系数 β。总 Actor 损失 = L_RLPD + β * L_contrast。",
 )
 flags.DEFINE_integer(
-    "preference_batch_size", 4,
+    "preference_batch_size", 16,
     "偏好学习批大小。低于此数量时跳过修正更新，使用标准 RLPD。",
 )
 flags.DEFINE_integer(
@@ -211,13 +211,14 @@ def detect_suboptimal_segments(
     return segments
 
 
-def compute_episode_alpha_weights(
+def compute_episode_alpha_and_segment_ids(
     episode_len: int,
     suboptimal_segments: List[Tuple[int, int]],
+    segment_uids: List[int],
     lam: float,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    为 episode 每条 transition 计算位置感知衰减权重 α(t)。
+    为 episode 每条 transition 计算位置感知衰减权重 α(t) 与所属 segment_id。
 
     规则：
       - t ∈ [t_a, t_i]（次优片段内）：alpha = exp(-λ*(t_i - t))
@@ -225,12 +226,24 @@ def compute_episode_alpha_weights(
       - 其余 transition：alpha = 0.0
       - 多段重叠时取最大值
     """
+    if len(suboptimal_segments) != len(segment_uids):
+        raise ValueError(
+            f"suboptimal_segments({len(suboptimal_segments)}) 与 "
+            f"segment_uids({len(segment_uids)}) 长度不一致"
+        )
+
     alpha_weights = np.zeros(episode_len, dtype=np.float32)
-    for (t_a, t_i) in suboptimal_segments:
+    segment_ids = np.full(episode_len, -1, dtype=np.int32)
+    best_weights = np.zeros(episode_len, dtype=np.float32)
+
+    for seg_uid, (t_a, t_i) in zip(segment_uids, suboptimal_segments):
         for t in range(t_a, min(t_i + 1, episode_len)):
             w = float(np.exp(-lam * (t_i - t)))
             alpha_weights[t] = max(alpha_weights[t], w)
-    return alpha_weights
+            if w >= best_weights[t]:
+                best_weights[t] = w
+                segment_ids[t] = int(seg_uid)
+    return alpha_weights, segment_ids
 
 
 # =============================================================================
@@ -248,7 +261,7 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
       3. 逐 step 缓存 transition 到 episode_buffer（暂不写入 data_store）
       4. episode 结束时：
            a. detect_suboptimal_segments()  → 次优片段
-           b. compute_episode_alpha_weights() → α(t)
+           b. compute_episode_alpha_and_segment_ids() → α(t), segment_id
            c. 带 alpha_weight 的 transition 批量写入 data_store
 
     include_grasp_penalty: True 时从 env info 中读取 grasp_penalty 并写入 transition
@@ -339,6 +352,7 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
     demo_transitions:      List[Dict] = []   # 干预步，用于 demo_buffer 落盘
     episode_buffer:        List[Dict] = []   # 当前 episode 缓存
     intervention_markers:  List[Dict] = []   # 当前 episode 干预起始点
+    next_segment_uid = 0
 
     obs, _ = env.reset()
     done = False
@@ -397,6 +411,7 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                     t_i = len(episode_buffer)   # episode 内相对索引（非全局 step）
                     intervention_markers.append({
                         "step_idx":      t_i,   # 供 Module 1 detect_suboptimal_segments 使用
+                        "segment_id":    next_segment_uid,
                         "obs":           obs,
                         "human_action":  human_action,
                         "policy_action": policy_action_saved,
@@ -406,7 +421,9 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                     preference_data_store.insert({
                         "observations":   obs,
                         "human_actions":  human_action,
+                        "segment_ids":    np.int32(next_segment_uid),
                     })
+                    next_segment_uid += 1
 
                 already_intervened = True
                 actions = human_action
@@ -434,7 +451,8 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                 rewards=reward,
                 masks=1.0 - done,
                 dones=done,
-                alpha_weight=0.0,          # 占位符，episode 结束后由 compute_episode_alpha_weights 填充
+                alpha_weight=0.0,          # 占位符，episode 结束后由 compute_episode_alpha_and_segment_ids 填充
+                segment_ids=-1,            # 占位符，episode 结束后由次优片段分配
                 _was_intervened=already_intervened,   # 内部字段，不写入 buffer
             )
             if include_grasp_penalty and "grasp_penalty" in info:
@@ -471,8 +489,9 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                 )
 
                 # [Module 2] 计算每步 alpha_weight
-                alpha_weights = compute_episode_alpha_weights(
-                    len(episode_buffer), suboptimal_segs, FLAGS.alpha_lambda
+                segment_uids = [m["segment_id"] for m in intervention_markers]
+                alpha_weights, segment_ids = compute_episode_alpha_and_segment_ids(
+                    len(episode_buffer), suboptimal_segs, segment_uids, FLAGS.alpha_lambda
                 )
 
                 # 批量写入 data_store（含真实 alpha_weight）
@@ -482,6 +501,7 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                     tr_to_insert = {k: v for k, v in tr.items()
                                     if not k.startswith("_")}
                     tr_to_insert["alpha_weight"] = float(alpha_weights[i])
+                    tr_to_insert["segment_ids"] = int(segment_ids[i])
                     data_store.insert(tr_to_insert)
                     transitions.append(tr_to_insert)
 
@@ -783,6 +803,7 @@ def main(_):
             capacity=config.replay_buffer_capacity,
             image_keys=config.image_keys,
             include_alpha_correction=True,    # [Module 2] 含 alpha_weight 字段
+            include_segment_ids=True,         # [Module 2] 按段修正所需 segment_id
         )
         _wandb_desc = (
             f"{FLAGS.exp_name}__{FLAGS.run_tag}" if FLAGS.run_tag else FLAGS.exp_name
@@ -806,6 +827,7 @@ def main(_):
             capacity=config.replay_buffer_capacity,
             image_keys=config.image_keys,
             include_alpha_correction=True,    # schema 保持一致
+            include_segment_ids=True,         # schema 与 replay 保持一致
         )
 
         # [Module 3] 干预偏好对缓冲区
@@ -820,6 +842,7 @@ def main(_):
                     if "infos" in transition and "grasp_penalty" in transition["infos"]:
                         transition["grasp_penalty"] = transition["infos"]["grasp_penalty"]
                     transition["alpha_weight"] = 0.0   # 优质演示无需修正
+                    transition.setdefault("segment_ids", -1)
                     demo_buffer.insert(transition)
         print_green(f"demo buffer size: {len(demo_buffer)}")
         print_green(f"online buffer size: {len(replay_buffer)}")
@@ -833,6 +856,7 @@ def main(_):
                     saved_transitions = pkl.load(f)
                     for transition in saved_transitions:
                         transition.setdefault("alpha_weight", 0.0)
+                        transition.setdefault("segment_ids", -1)
                         replay_buffer.insert(transition)
             print_green(f"Loaded previous buffer. Replay buffer size: {len(replay_buffer)}")
 
@@ -846,6 +870,7 @@ def main(_):
                     saved_transitions = pkl.load(f)
                     for transition in saved_transitions:
                         transition.setdefault("alpha_weight", 0.0)
+                        transition.setdefault("segment_ids", -1)
                         demo_buffer.insert(transition)
             print_green(f"Loaded previous demo buffer. Demo buffer size: {len(demo_buffer)}")
 
