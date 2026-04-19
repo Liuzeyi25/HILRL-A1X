@@ -41,7 +41,8 @@ class ReplayBufferDataStore(ReplayBuffer, DataStoreBase):
 
     # NOTE: method for DataStoreBase
     def get_latest_data(self, from_id: int):
-        raise NotImplementedError  # TODO
+        # Actor-side buffer: 只向 learner 推数据，不从 learner 拉，返回空列表即可
+        return []
 
 
 class MemoryEfficientReplayBufferDataStore(MemoryEfficientReplayBuffer, DataStoreBase):
@@ -81,7 +82,8 @@ class MemoryEfficientReplayBufferDataStore(MemoryEfficientReplayBuffer, DataStor
 
     # NOTE: method for DataStoreBase
     def get_latest_data(self, from_id: int):
-        raise NotImplementedError  # TODO
+        # Actor-side buffer: 只向 learner 推数据，不从 learner 拉，返回空列表即可
+        return []
 
 
 def populate_data_store(
@@ -213,4 +215,5 @@ class PreferenceBufferDataStore(DataStoreBase):
         return len(self)
 
     def get_latest_data(self, from_id: int):
-        raise NotImplementedError
+        # Actor-side buffer: 只向 learner 推数据，不从 learner 拉，返回空列表即可
+        return []

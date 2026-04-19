@@ -358,7 +358,7 @@ class SACAgent(flax.struct.PyTreeNode):
         Module 3: ORPO 风格对比 Actor 损失。
 
         L_actor = L_RLPD + β · L_contrast
-        L_contrast = -E[log π(a^h|s) - log π(a^π|s)]
+    L_contrast = -E[log σ(log π(a^h|s) - log π(a^π_cur|s))]
 
         兼容 fix_gripper=True（preference_batch 中的动作截断）。
         """
@@ -386,29 +386,31 @@ class SACAgent(flax.struct.PyTreeNode):
             preference_batch["observations"], rng=pref_rng, grad_params=params
         )
 
-        # fix_gripper 兼容：policy 输出 (action_dim-1) 维，preference 动作需截断
-        human_a = (
-            preference_batch["human_actions"][..., :-1]
-            if self.config["fix_gripper"]
-            else preference_batch["human_actions"]
-        )
-        policy_a = (
-            preference_batch["policy_actions"][..., :-1]
-            if self.config["fix_gripper"]
-            else preference_batch["policy_actions"]
-        )
+        # 动作维度自动对齐：若 preference 动作比策略输出多（常见于带 gripper 的记录），
+        # 自动按策略输出维度截断，避免维度不一致。
+        policy_dim = pref_distributions.distribution.loc.shape[-1]
+        human_a = preference_batch["human_actions"][..., :policy_dim]
+
+        # 不再使用历史 policy_actions：每次 learner 更新时在当前策略下重采样。
+        rng, pref_sample_rng = jax.random.split(rng)
+        sampled_policy_a, log_prob_policy = pref_distributions.sample_and_log_prob(seed=pref_sample_rng)
+
+        # 数值稳定性：Tanh-squashed 分布在 |a|=1 处 log_prob 可能出现极端值。
+        # 在计算 log_prob 前做轻量裁剪，避免 atanh(±1) 触发数值爆炸。
+        clip_eps = self.config.get("contrastive_action_clip_eps", 1e-6)
+        human_edge_ratio = jnp.mean(jnp.abs(human_a) >= (1.0 - clip_eps))
+        policy_edge_ratio = jnp.mean(jnp.abs(sampled_policy_a) >= (1.0 - clip_eps))
+        human_a = jnp.clip(human_a, -1.0 + clip_eps, 1.0 - clip_eps)
+        sampled_policy_a = jnp.clip(sampled_policy_a, -1.0 + clip_eps, 1.0 - clip_eps)
 
         log_prob_human  = pref_distributions.log_prob(human_a)   # (pref_size,)
-        log_prob_policy = pref_distributions.log_prob(policy_a)   # (pref_size,)
         chex.assert_shape(log_prob_human,  (pref_size,))
         chex.assert_shape(log_prob_policy, (pref_size,))
 
-        # Module 3 核心：ORPO 风格对比损失
-        # L_contrast = -E[log pi(a^h | s) - log pi(a^pi | s)]
-        # 最小化 L_contrast 等价于最大化 log pi(a^h|s) - log pi(a^pi|s)
-        # 即：提高策略对人类动作的似然，同时相对降低对历史次优动作的似然
-        # contrastive_coef (beta) 越大，策略越快向人类动作靠拢（但可能损失 RL 探索性）
-        contrastive_loss = -jnp.mean(log_prob_human - log_prob_policy)
+        # Module 3 核心：BTL / logistic pairwise loss
+        # gap > 0 表示在当前策略下人类动作比策略采样动作更可能。
+        log_prob_gap = log_prob_human - log_prob_policy
+        contrastive_loss = -jnp.mean(jax.nn.log_sigmoid(log_prob_gap))
         contrastive_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
 
@@ -420,7 +422,9 @@ class SACAgent(flax.struct.PyTreeNode):
             "entropy": -log_probs.mean(),
             "log_prob_human": log_prob_human.mean(),
             "log_prob_policy_hist": log_prob_policy.mean(),
-            "log_prob_gap": (log_prob_human - log_prob_policy).mean(),
+            "log_prob_gap": log_prob_gap.mean(),
+            "contrastive_human_edge_ratio": human_edge_ratio,
+            "contrastive_policy_edge_ratio": policy_edge_ratio,
         }
         return total_actor_loss, info
 
@@ -473,11 +477,14 @@ class SACAgent(flax.struct.PyTreeNode):
             if self.config["fix_gripper"]
             else preference_batch["human_actions"]
         )
-        p_actions = (
-            preference_batch["policy_actions"][..., :-1]
-            if self.config["fix_gripper"]
-            else preference_batch["policy_actions"]
+
+        # 不再依赖历史 policy_actions：每次更新时用当前策略在偏好状态上重采样动作。
+        rng, cf_policy_rng = jax.random.split(rng)
+        pref_action_dist = self.forward_policy(
+            preference_batch["observations"], rng=cf_policy_rng, train=False
         )
+        rng, cf_sample_rng = jax.random.split(rng)
+        p_actions, _ = pref_action_dist.sample_and_log_prob(seed=cf_sample_rng)
 
         q_human_ensemble = self.forward_target_critic(
             preference_batch["observations"], h_actions, rng=cf_rng,

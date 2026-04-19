@@ -30,11 +30,11 @@ class A1Kinematics:
         self.robot_model = CudaRobotModel(cuda_model_cfg)
         self.ik_config = IKSolverConfig.load_from_robot_config(
             self.robot_cfg, None,
-            num_seeds=32,  # 增加seeds
+            num_seeds=16,  # 减少seeds加速求解（32→16）
             position_threshold=0.002,  # 5mm
             rotation_threshold=0.005,  # ~2.9度
-            regularization=True, 
-            use_cuda_graph=False,
+            regularization=True,
+            use_cuda_graph=True,   # 开启CUDA graph加速（首次warmup后每次<10ms）
             tensor_args=self.tensor_args)
         self.ik_solver = IKSolver(self.ik_config)
         self.prev_q = None

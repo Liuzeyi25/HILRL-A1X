@@ -69,7 +69,7 @@ def make_sac_pixel_agent(
         policy_kwargs={
             "tanh_squash_distribution": True,
             "std_parameterization": "exp",
-            "std_min": 1e-5,
+            "std_min": 1e-2,
             "std_max": 5,
         },
         critic_network_kwargs={
@@ -228,7 +228,7 @@ def make_sac_pixel_agent_hybrid_single_arm(
         policy_kwargs={
             "tanh_squash_distribution": True,
             "std_parameterization": "exp",
-            "std_min": 1e-5,
+            "std_min": 1e-2,
             "std_max": 5,
         },
         critic_network_kwargs={
@@ -278,7 +278,7 @@ def make_sac_pixel_agent_hybrid_dual_arm(
         policy_kwargs={
             "tanh_squash_distribution": True,
             "std_parameterization": "exp",
-            "std_min": 1e-5,
+            "std_min": 1e-2,
             "std_max": 5,
         },
         critic_network_kwargs={

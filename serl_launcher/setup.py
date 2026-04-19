@@ -10,6 +10,7 @@ setup(
     install_requires=[
         "zmq",
         "typing",
+        "numpy<2",
         "typing_extensions",
         "opencv-python",
         "lz4",

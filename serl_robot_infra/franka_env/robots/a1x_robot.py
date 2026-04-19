@@ -429,6 +429,20 @@ class A1XRobot:
         ee_pos = snapshot["ee_pos"]
         ee_quat = snapshot["ee_quat"]  # [x, y, z, w]
 
+        # --- Fallback: if ee_pos is all-zero (ROS2 /hdas/pose_ee_arm not received),
+        #     use FK from current joints to avoid IK solving near [0,0,0] ---
+        if np.allclose(ee_pos, 0.0, atol=1e-6):
+            try:
+                fk_pos, fk_quat = self._ik_solver.forward_kinematics(current_joints)
+                if not np.allclose(fk_pos, 0.0, atol=1e-6):
+                    print(f"[EEF] ee_pos全零，使用FK回退: pos={fk_pos}, quat={fk_quat}")
+                    ee_pos = fk_pos
+                    ee_quat = fk_quat
+                else:
+                    print("[EEF] 警告: ee_pos全零且FK结果也为零，请检查 /hdas/pose_ee_arm 话题是否正常")
+            except Exception as fk_e:
+                print(f"[EEF] FK回退失败: {fk_e}")
+
         # --- Determine target pos & quat ---
         delta_pos = np.array(eef_delta[:3])
         delta_rot = np.array(eef_delta[3:6])
@@ -446,9 +460,13 @@ class A1XRobot:
             target_pos = self._locked_ee_pos.copy()
             target_quat = self._locked_ee_quat.copy()
 
-            # Drift diagnostic
-            pos_drift = np.linalg.norm(ee_pos - target_pos)
-            print(f"[EE锁定] 目标pos={target_pos}, 反馈pos={ee_pos}, 位置偏差={pos_drift*1000:.2f}mm")
+            # Drift diagnostic (仅低频打印，避免每步刷屏)
+            if not hasattr(self, '_lock_log_count'):
+                self._lock_log_count = 0
+            self._lock_log_count += 1
+            if self._lock_log_count % 50 == 1:
+                pos_drift = np.linalg.norm(ee_pos - target_pos)
+                print(f"[EE锁定] 目标pos={target_pos}, 反馈pos={ee_pos}, 位置偏差={pos_drift*1000:.2f}mm")
         else:
             # ---- Unlocked mode: feedback-based ----
             target_pos = ee_pos + delta_pos
@@ -458,9 +476,6 @@ class A1XRobot:
                 current_rotation = R.from_quat(ee_quat)
                 delta_rotation = R.from_euler("xyz", delta_rot)
                 target_quat = (delta_rotation * current_rotation).as_quat()
-
-        print(f"当前关节角: {current_joints}")
-        print(f"指令EEF delta: pos {delta_pos}, rot {delta_rot}, gripper {gripper_position}mm")
 
         # Update IK seed to actual joint feedback before solving
         self._ik_solver.prev_q = torch.as_tensor(
@@ -480,8 +495,10 @@ class A1XRobot:
             return None
 
         joint_solution = result.js_solution.position.cpu().numpy()[:6]
+        # 仅在关节变化超过阈值时打印（避免每步刷屏）
         max_diff = np.abs(joint_solution - current_joints).max()
-        print(f"IK solution: max joint diff = {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f} deg)")
+        if max_diff > 0.05:
+            print(f"IK solution: max joint diff = {max_diff:.4f} rad ({np.rad2deg(max_diff):.2f} deg)")
 
         full_command = np.concatenate([joint_solution, [gripper_position]])
         self.command_joint_state(full_command, from_gello=False)

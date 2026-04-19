@@ -11,7 +11,7 @@ from franka_env.envs.wrappers import (
     SpacemouseIntervention,
     GelloIntervention,
     MultiCameraBinaryRewardClassifierWrapper,
-    #ManualRewardWrapper,
+    ManualRewardWrapper,
 )
 from franka_env.envs.a1x_env import DefaultA1XEnvConfig
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
@@ -84,7 +84,7 @@ class EnvConfig(DefaultA1XEnvConfig):
 # - 0.25872340425531914
 
     # 重置关节配置 (中立位置)
-    RESET_JOINT_STATE = np.array([0.25340425531914895, 2.3048936170212766, -1.98, 1.1544680851063829, -0.01872340425531915, 0.25872340425531914, 100.0])  # 夹爪张开
+    RESET_JOINT_STATE = np.array([0.25340425531914895, 2.0048936170212766, -1.5, 1.1544680851063829, -0.01872340425531915, 0.25872340425531914, 100.0])  # 夹爪张开
     
     USE_GRIPPER = False  # 是否使用夹爪控制
     RESET_SETTLE_TIME = 2.0  # 重置后等待时间（秒），确保环境稳定
@@ -142,7 +142,7 @@ class TrainConfig(DefaultTrainingConfig):
     discount = 0.98
     buffer_period = 1000
     encoder_type = "resnet-pretrained"
-    setup_mode = "single-arm-learned-gripper"
+    setup_mode = "single-arm-fixed-gripper"
     reward_neg = -0.05
     
     # 🚀 Action Chunking 配置
@@ -233,6 +233,11 @@ class TrainConfig(DefaultTrainingConfig):
         
         # 奖励分类器 (如果启用)
         if classifier:
+            ckpt_path = os.path.abspath("classifier_ckpt/")
+            if not os.path.exists(ckpt_path) or not self.classifier_keys:
+                print(f"\033[93m[WARNING] classifier 条件不满足（ckpt不存在或classifier_keys为空），跳过classifier初始化\033[00m")
+                classifier = False
+        if classifier:
             classifier_func = load_classifier_func(
                 key=jax.random.PRNGKey(0),
                 sample=env.observation_space.sample(),
@@ -267,8 +272,7 @@ class TrainConfig(DefaultTrainingConfig):
         env = A1XGripperPenaltyWrapper(env, penalty=-0.2)
         
         # 🎖️ 手动奖励包装器 - 随时可以按 's'/'f' 键标记成功/失败
-        # 放在最外层，这样无论是否有干预都能使用
-        # if not fake_env:  # 只在真机上启用
-        #     env = ManualRewardWrapper(env, success_reward=1.0)
+        if not fake_env:
+            env = ManualRewardWrapper(env, success_reward=1.0)
         
         return env

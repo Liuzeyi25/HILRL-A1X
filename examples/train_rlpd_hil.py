@@ -401,12 +401,11 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                         "human_action":  human_action,
                         "policy_action": policy_action_saved,
                     })
-                    # [Module 3] 偏好对 (s_{t_i}, a^h, a^π) 写入 PreferenceBufferDataStore
-                    # learner 端使用此数据计算对比损失和 A_cf
+                    # [Module 3] 偏好对写入：仅记录 (s_{t_i}, a^h)
+                    # 当前策略动作 a^π 在 learner 更新时在线重采样，避免历史动作分布漂移。
                     preference_data_store.insert({
                         "observations":   obs,
                         "human_actions":  human_action,
-                        "policy_actions": policy_action_saved,
                     })
 
                 already_intervened = True
@@ -877,7 +876,7 @@ def main(_):
         sampling_rng = jax.device_put(sampling_rng, sharding.replicate())
         data_store            = QueuedDataStore(20000)
         intvn_data_store      = QueuedDataStore(20000)
-        preference_data_store = PreferenceBufferDataStore(capacity=10000)
+        preference_data_store = QueuedDataStore(10000)
 
         print_green("starting actor loop")
         actor(

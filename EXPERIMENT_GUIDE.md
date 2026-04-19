@@ -97,7 +97,7 @@ bash ../start_a1x_ros2_node.sh
 ### 1.2 运行录制脚本
 
 ```bash
-python record_demos_octo_manual_new.py \
+python /home/dungeon_master/liuzeyi/HILRL-A1X/examples/record_demos_octo_manual_new.py \
     --exp_name <YOUR_EXP_NAME> \
     --successes_needed 20 \
     --demo_data_subdir $(date +%Y%m%d)
@@ -279,7 +279,7 @@ python ../../train_rlpd_hil.py \
 ```bash
 cd examples/experiments/<EXP_NAME>
 conda activate conrft
-xvfb-run -a bash run_learner_hil.sh
+xvfb-run -a bash run_learner_zeyi.sh
 ```
 
 > `xvfb-run -a` 用于无显示器服务器，如果服务器有 GPU 显示则不需要。

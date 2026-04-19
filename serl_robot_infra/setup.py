@@ -6,6 +6,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "gymnasium",
+        "numpy<2",
         "pyrealsense2",
         "pymodbus==2.5.3",
         "opencv-python",

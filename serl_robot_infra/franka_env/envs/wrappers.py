@@ -17,87 +17,87 @@ from gello.agents.gello_follower import GelloFollower
 sigmoid = lambda x: 1 / (1 + np.exp(-x))
 
 
-# class ManualRewardWrapper(gym.Wrapper):
-#     """
-#     独立的手动奖励 wrapper，支持成功/失败标记。
+class ManualRewardWrapper(gym.Wrapper):
+    """
+    独立的手动奖励 wrapper，支持成功/失败标记。
     
-#     功能：
-#     - 按 's' 键：标记成功 (reward=1.0, done=True)
-#     - 按 'f' 键：标记失败 (reward=0.0, done=True)
-#     - 不依赖任何干预状态，可以随时使用
-#     - 适用于在线训练和数据采集
+    功能：
+    - 按 's' 键：标记成功 (reward=1.0, done=True)
+    - 按 'f' 键：标记失败 (reward=0.0, done=True)
+    - 不依赖任何干预状态，可以随时使用
+    - 适用于在线训练和数据采集
     
-#     Usage:
-#         env = YourEnv(...)
-#         env = ManualRewardWrapper(env)  # 在最外层添加
-#     """
+    Usage:
+        env = YourEnv(...)
+        env = ManualRewardWrapper(env)  # 在最外层添加
+    """
     
-#     def __init__(self, env, success_reward: float = 1.0):
-#         super().__init__(env)
-#         self.success_reward = success_reward
-#         self.manual_success_flag = False
-#         self.manual_failure_flag = False
+    def __init__(self, env, success_reward: float = 1.0):
+        super().__init__(env)
+        self.success_reward = success_reward
+        self.manual_success_flag = False
+        self.manual_failure_flag = False
         
-#         # 启动键盘监听器
-#         self.keyboard_listener = keyboard.Listener(
-#             on_press=self._on_key_press)
-#         self.keyboard_listener.start()
-#         print("=" * 60)
-#         print("🎹 ManualRewardWrapper 已启用")
-#         print("=" * 60)
-#         print("   - 按 's' 键：标记当前 episode 为成功")
-#         print("   - 按 'f' 键：标记当前 episode 为失败")
-#         print("=" * 60)
+        # 启动键盘监听器
+        self.keyboard_listener = keyboard.Listener(
+            on_press=self._on_key_press)
+        self.keyboard_listener.start()
+        print("=" * 60)
+        print("🎹 ManualRewardWrapper 已启用")
+        print("=" * 60)
+        print("   - 按 's' 键：标记当前 episode 为成功")
+        print("   - 按 'f' 键：标记当前 episode 为失败")
+        print("=" * 60)
     
-#     def _on_key_press(self, key):
-#         """监听 's' 和 'f' 键"""
-#         try:
-#             if hasattr(key, 'char') and key.char is not None:
-#                 if key.char == 's' or key.char == 'S':
-#                     self.manual_success_flag = True
-#                     print("\n" + "=" * 60)
-#                     print("✅ [ManualReward] 手动标记: 成功!")
-#                     print("=" * 60)
-#                 elif key.char == 'f' or key.char == 'F':
-#                     self.manual_failure_flag = True
-#                     print("\n" + "=" * 60)
-#                     print("❌ [ManualReward] 手动标记: 失败!")
-#                     print("=" * 60)
-#         except:
-#             pass
+    def _on_key_press(self, key):
+        """监听 's' 和 'f' 键"""
+        try:
+            if hasattr(key, 'char') and key.char is not None:
+                if key.char == 's' or key.char == 'S':
+                    self.manual_success_flag = True
+                    print("\n" + "=" * 60)
+                    print("✅ [ManualReward] 手动标记: 成功!")
+                    print("=" * 60)
+                elif key.char == 'f' or key.char == 'F':
+                    self.manual_failure_flag = True
+                    print("\n" + "=" * 60)
+                    print("❌ [ManualReward] 手动标记: 失败!")
+                    print("=" * 60)
+        except:
+            pass
     
-#     def step(self, action):
-#         obs, rew, done, truncated, info = self.env.step(action)
+    def step(self, action):
+        obs, rew, done, truncated, info = self.env.step(action)
         
-#         # 检查手动成功标志
-#         if self.manual_success_flag:
-#             rew = self.success_reward
-#             done = True
-#             info['succeed'] = True
-#             info['manual_reward'] = True
-#             self.manual_success_flag = False
-#             print(f"✅ [ManualReward] 已应用: reward={rew}, succeed=True")
+        # 检查手动成功标志
+        if self.manual_success_flag:
+            rew = self.success_reward
+            done = True
+            info['succeed'] = True
+            info['manual_reward'] = True
+            self.manual_success_flag = False
+            print(f"✅ [ManualReward] 已应用: reward={rew}, succeed=True")
         
-#         # 检查手动失败标志
-#         elif self.manual_failure_flag:
-#             rew = 0.0
-#             done = True
-#             info['succeed'] = False
-#             info['manual_failure'] = True
-#             self.manual_failure_flag = False
-#             print(f"❌ [ManualReward] 已应用: reward={rew}, succeed=False")
+        # 检查手动失败标志
+        elif self.manual_failure_flag:
+            rew = 0.0
+            done = True
+            info['succeed'] = False
+            info['manual_failure'] = True
+            self.manual_failure_flag = False
+            print(f"❌ [ManualReward] 已应用: reward={rew}, succeed=False")
         
-#         return obs, rew, done, truncated, info
+        return obs, rew, done, truncated, info
     
-#     def reset(self, **kwargs):
-#         self.manual_success_flag = False
-#         self.manual_failure_flag = False
-#         return self.env.reset(**kwargs)
+    def reset(self, **kwargs):
+        self.manual_success_flag = False
+        self.manual_failure_flag = False
+        return self.env.reset(**kwargs)
     
-#     def close(self):
-#         if hasattr(self, 'keyboard_listener'):
-#             self.keyboard_listener.stop()
-#         return self.env.close()
+    def close(self):
+        if hasattr(self, 'keyboard_listener'):
+            self.keyboard_listener.stop()
+        return self.env.close()
 
 
 class HumanClassifierWrapper(gym.Wrapper):
@@ -571,13 +571,12 @@ class SpacemouseIntervention(gym.ActionWrapper):
 
         if self.gripper_enabled:
             if self.left:  # close gripper
-                # 🔧 修复：输出 -1.0 而非 ~-0.175，与 DQN grasp_critic 的
-                # jnp.round() 约定匹配，避免 demo 夹爪动作全被 round 成 0
-                gripper_action = np.array([-1.0])
+                # 避免精确落在边界 -1.0，降低 tanh-squashed log_prob 数值奇异风险。
+                gripper_action = np.array([-0.999], dtype=np.float32)
                 intervened = True
             elif self.right:  # open gripper
 
-                gripper_action = np.array([1.0])
+                gripper_action = np.array([0.999], dtype=np.float32)
                 intervened = True
             else:
                 gripper_action = np.zeros((1,))
