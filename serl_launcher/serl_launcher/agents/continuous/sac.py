@@ -267,10 +267,11 @@ class SACAgent(flax.struct.PyTreeNode):
         Module 2: 偏好感知 Q 值修正。
 
         修正后 Bellman 目标：
-            ỹ_t = y_t - α(t) · A_cf
+            ỹ_t = y_t - α(t) · A_cf(t)
 
-        - α(t) = batch["alpha_weight"]，actor 端预计算，次优片段内为 exp(-λ*(t_i-t))，其余为 0
-        - A_cf = max(0, mean[Q_tgt(s,a^h) - Q_tgt(s,a^π)])，外部 stop-gradient 传入
+        - α(t) = batch["alpha_weight"]，次优片段内 exp(-λ*(t_i-t))，其余 0
+        - A_cf : (batch_size,) 逐样本修正量，由 update_with_correction 精确对齐后传入；
+                 无对应偏好样本的位置为 0.0（不修正）
 
         兼容 fix_gripper=True（动作截断与 critic_loss_fn 保持一致）。
         """
@@ -305,16 +306,15 @@ class SACAgent(flax.struct.PyTreeNode):
             temperature = self.forward_temperature()
             target_q = target_q - temperature * next_actions_log_probs
 
-        # Module 2 核心：位置感知衰减修正
-        # 数学形式：y_tilde_t = y_t - alpha(t) * A_cf
-        #   y_t       : 标准 Bellman 目标（温度修正后）
-        #   alpha(t)  : 位置感知权重，次优片段 [t_a, t_i] 内 = exp(-lam*(t_i-t))，其余 = 0
-        #   A_cf      : 反事实优势 = max(0, mean_batch[Q(s,a^h) - Q(s,a^pi)])
-        # 作用：将次优片段内的 Q 目标值向下偏移，促使 Critic 学会"次优状态价值较低"
-        alpha_weights = batch["alpha_weight"]   # (batch_size,)
+        # Module 2 核心：逐样本位置感知衰减修正
+        # ỹ_t = y_t - α(t) · A_cf(t)
+        #   α(t)    : (B,) 次优片段内 = exp(-λ*(t_i-t))，其余 = 0
+        #   A_cf(t) : (B,) 逐样本修正量；来自与该条 transition 同 segment_id 的偏好样本，
+        #             无对应样本时为 0.0（不修正）
+        alpha_weights = batch["alpha_weight"]          # (B,)
         chex.assert_shape(alpha_weights, (batch_size,))
-        A_cf_vec = jnp.broadcast_to(A_cf, alpha_weights.shape)
-        corrected_target_q = target_q - alpha_weights * A_cf_vec
+        chex.assert_shape(A_cf, (batch_size,))          # 调用方保证逐样本对齐
+        corrected_target_q = target_q - alpha_weights * A_cf
         chex.assert_shape(corrected_target_q, (batch_size,))
 
         # fix_gripper 兼容（与 critic_loss_fn 一致）
@@ -327,22 +327,40 @@ class SACAgent(flax.struct.PyTreeNode):
         chex.assert_equal_shape([predicted_qs, target_qs])
         critic_loss = jnp.mean((predicted_qs - target_qs) ** 2)
 
-        correction = alpha_weights * A_cf_vec
+        # ── 监控指标 ─────────────────────────────────────────────────────────
+        # [指标1] correction_hit_rate：α>0 且 A_cf>0 同时成立的 transition 占比
+        #   健康值：初期可能低，随训练进行应 > 20%；若持续 <5% 说明匹配率太低
+        correction_active = (A_cf > 0.0) & (alpha_weights > 0.0)
+        correction_hit_rate = jnp.mean(correction_active.astype(jnp.float32))
+
+        # [指标2] correction_magnitude：α(t)·A_cf(t) 的均值，即实际作用到 Q 目标的修正量
+        #   健康值：应 > 0；量级应与 reward 的绝对值相当（如 reward 在 [-0.05, 1] 则修正量在 0.01~0.5）
+        correction = alpha_weights * A_cf
         correction_magnitude = jnp.mean(correction)
+
+        # [指标3] correction_ratio：修正量 / |未修正Q目标| 比值
+        #   健康值：0.05~0.5；太小说明修正微弱；太大说明修正过猛（可调 alpha_lambda）
         correction_ratio = correction_magnitude / (jnp.mean(jnp.abs(target_q)) + 1e-8)
-        alpha_nonzero_ratio = jnp.mean(alpha_weights > 0.0)
+
+        # [指标4] A_cf_where_active：仅在有效修正位置上 A_cf 的均值（排除 0 的干扰）
+        #   健康值：应 > 0；若此值 > 0 但 correction_hit_rate 仍低，说明问题在匹配率而非 Q 差距
+        A_cf_where_active = jnp.where(correction_active, A_cf, 0.0).sum() / (
+            correction_active.astype(jnp.float32).sum() + 1e-8
+        )
 
         info = {
             "corrected_critic_loss": critic_loss,
             "predicted_qs": jnp.mean(predicted_qs),
             "corrected_target_qs": jnp.mean(corrected_target_q),
             "uncorrected_target_qs": jnp.mean(target_q),
-            "A_cf": jnp.mean(A_cf_vec),
-            "A_cf_nonzero_ratio": jnp.mean(A_cf_vec > 0.0),
+            # ── 修正效果核心指标 ──
+            "correction_hit_rate": correction_hit_rate,     # 有效修正占比 ↑ 越好
+            "correction_magnitude": correction_magnitude,   # 修正量均值   ↑ 表示修正在起作用
+            "correction_ratio": correction_ratio,           # 修正量/Q值比  健康值 0.05~0.5
+            "A_cf_where_active": A_cf_where_active,         # 有效位置的 A_cf 均值
+            # ── 辅助诊断 ──
             "mean_alpha_weight": jnp.mean(alpha_weights),
-            "alpha_nonzero_ratio": alpha_nonzero_ratio,
-            "correction_magnitude": correction_magnitude,
-            "correction_ratio": correction_ratio,
+            "alpha_nonzero_ratio": jnp.mean(alpha_weights > 0.0),
             "rewards": batch["rewards"].mean(),
         }
         return critic_loss, info
@@ -367,7 +385,6 @@ class SACAgent(flax.struct.PyTreeNode):
         兼容 fix_gripper=True（preference_batch 中的动作截断）。
         """
         batch_size = batch["rewards"].shape[0]
-        pref_size = preference_batch["human_actions"].shape[0]
 
         # 标准 SAC/RLPD Actor 损失
         temperature = self.forward_temperature()
@@ -407,19 +424,25 @@ class SACAgent(flax.struct.PyTreeNode):
         human_a = jnp.clip(human_a, -1.0 + clip_eps, 1.0 - clip_eps)
         sampled_policy_a = jnp.clip(sampled_policy_a, -1.0 + clip_eps, 1.0 - clip_eps)
 
-        log_prob_human  = pref_distributions.log_prob(human_a)   # (pref_size,)
-        chex.assert_shape(log_prob_human,  (pref_size,))
-        chex.assert_shape(log_prob_policy, (pref_size,))
+        log_prob_human  = pref_distributions.log_prob(human_a)   # (B,)
+        chex.assert_shape(log_prob_human,  (batch_size,))
+        chex.assert_shape(log_prob_policy, (batch_size,))
 
         # Module 3 核心：BTL / logistic pairwise loss
-        # gap > 0 表示在当前策略下人类动作比策略采样动作更可能。
-        log_prob_gap = log_prob_human - log_prob_policy
-        contrastive_loss = -jnp.mean(jax.nn.log_sigmoid(log_prob_gap))
+        # 只在 valid_mask=True 的位置（有真实偏好样本）计算对比损失，
+        # 无匹配的位置 log_sigmoid(0)=log(0.5) 为无信息项，用 mask 屏蔽避免干扰。
+        valid_mask = preference_batch["valid_mask"].astype(jnp.float32)  # (B,)
+        log_prob_gap = log_prob_human - log_prob_policy                  # (B,)
+        contrastive_loss_per_sample = -jax.nn.log_sigmoid(log_prob_gap)  # (B,)
+        # 只对有效样本求均值；若无有效样本则 contrastive_loss=0（不影响 actor）
+        valid_count = jnp.sum(valid_mask) + 1e-8
+        contrastive_loss = jnp.sum(contrastive_loss_per_sample * valid_mask) / valid_count
+
         contrastive_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
-        pref_action_l2_mean = jnp.mean(
-            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1)
-        )
+        pref_action_l2_mean = jnp.sum(
+            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1) * valid_mask
+        ) / valid_count
 
         info = {
             "actor_loss": total_actor_loss,
@@ -427,9 +450,9 @@ class SACAgent(flax.struct.PyTreeNode):
             "contrastive_loss": contrastive_loss,
             "temperature": temperature,
             "entropy": -log_probs.mean(),
-            "log_prob_human": log_prob_human.mean(),
-            "log_prob_policy_hist": log_prob_policy.mean(),
-            "log_prob_gap": log_prob_gap.mean(),
+            "log_prob_human": jnp.sum(log_prob_human * valid_mask) / valid_count,
+            "log_prob_policy_hist": jnp.sum(log_prob_policy * valid_mask) / valid_count,
+            "log_prob_gap": jnp.sum(log_prob_gap * valid_mask) / valid_count,
             "pref_action_l2_mean": pref_action_l2_mean,
             "contrastive_human_edge_ratio": human_edge_ratio,
             "contrastive_policy_edge_ratio": policy_edge_ratio,
@@ -476,63 +499,49 @@ class SACAgent(flax.struct.PyTreeNode):
             add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]}
         )
 
-        # Step 1: 用 target network 计算 A_cf（stop-gradient）
+        # ── Step 1: 逐样本计算 A_cf（精确对齐版）─────────────────────────────
+        # preference_batch 已由 learner 端通过 get_by_segment_ids 对齐到 batch，
+        # 即 preference_batch[i] 就是 batch[i] 对应干预事件的偏好数据。
+        # valid_mask[i] = True 表示 batch[i] 在 preference buffer 中有匹配。
+        #
+        # 对比旧方案（随机 batch + segment 集合匹配）的优点：
+        #   - 无随机性：同一条 transition 每次训练都用相同的 (s_{t_i}, a^h)
+        #   - 无稀疏匹配问题：不再依赖两个随机 batch 碰巧采到同一 segment_id
+        #   - 显存零增量：preference buffer 本身已有 obs，不需要扩大 replay buffer
         rng, cf_rng = jax.random.split(rng)
 
-        # fix_gripper 兼容：preference 动作截断
-        h_actions = (
-            preference_batch["human_actions"][..., :-1]
-            if self.config["fix_gripper"]
-            else preference_batch["human_actions"]
-        )
+        # A_cf 用干预时刻记录的历史策略动作 a^π_old（非当前策略重采样），
+        # 这样即使 Module 3 已让当前策略拟合人类动作，A_cf 仍能反映干预时的劣势。
+        # fix_gripper 兼容：截掉最后一维（夹爪）
+        if self.config["fix_gripper"]:
+            h_actions = preference_batch["human_actions"][..., :-1]
+            p_actions = preference_batch["policy_actions"][..., :-1]
+        else:
+            h_actions = preference_batch["human_actions"]
+            p_actions = preference_batch["policy_actions"]
 
-        # 不再依赖历史 policy_actions：每次更新时用当前策略在偏好状态上重采样动作。
-        rng, cf_policy_rng = jax.random.split(rng)
-        pref_action_dist = self.forward_policy(
-            preference_batch["observations"], rng=cf_policy_rng, train=False
-        )
-        rng, cf_sample_rng = jax.random.split(rng)
-        p_actions, _ = pref_action_dist.sample_and_log_prob(seed=cf_sample_rng)
-
+        # target critic 评估两种动作的 Q 值
         q_human_ensemble = self.forward_target_critic(
             preference_batch["observations"], h_actions, rng=cf_rng,
-        )  # (ensemble_size, pref_batch_size)
-        q_human_min = q_human_ensemble.min(axis=0)
+        )  # (ensemble_size, B)
+        q_human_min = q_human_ensemble.min(axis=0)    # (B,)
 
         q_policy_ensemble = self.forward_target_critic(
             preference_batch["observations"], p_actions, rng=cf_rng,
+        )  # (ensemble_size, B)
+        q_policy_min = q_policy_ensemble.min(axis=0)  # (B,)
+
+        # 逐样本 A_cf：仅在 valid_mask=True 且 Q_human > Q_policy 时才有修正量
+        # stop_gradient：A_cf 是外部信号，不允许梯度通过它传回 Q 网络
+        valid_mask = preference_batch["valid_mask"].astype(jnp.float32)  # (B,)
+        q_gap_raw = q_human_min - q_policy_min                           # (B,)
+        A_cf_per_sample = jax.lax.stop_gradient(
+            valid_mask * jnp.maximum(0.0, q_gap_raw)                     # (B,)
         )
-        q_policy_min = q_policy_ensemble.min(axis=0)
 
-        # stop_gradient 的必要性：
-        # A_cf 是"目标修正量"，若允许梯度回传，优化器会通过缩小
-        # Q_human 和 Q_policy 的差距来最小化修正项（投机捷径），
-        # 而非真正调整策略使其模仿人类动作。
-        # max(0, ...) 确保 A_cf >= 0：只有人类动作明确优于当前策略时才向下修正 Q 值。
-        q_gap_raw = q_human_min - q_policy_min
-        A_cf_raw = jnp.mean(q_gap_raw)
-
-        # 默认回退：全局标量 A_cf（兼容无 segment_ids 的旧数据）
-        A_cf = jax.lax.stop_gradient(jnp.maximum(0.0, A_cf_raw))
-        A_cf_batch = jnp.broadcast_to(A_cf, batch["rewards"].shape)
-
-        # 按段 A_cf：对每个 segment_id，使用该段偏好样本独立估计 A_cf 并映射到 batch 每条 transition
-        if ("segment_ids" in preference_batch) and ("segment_ids" in batch):
-            pref_seg_ids = preference_batch["segment_ids"].astype(jnp.int32)  # (P,)
-            batch_seg_ids = batch["segment_ids"].astype(jnp.int32)            # (B,)
-
-            q_gap_pos = jnp.maximum(0.0, q_gap_raw)                             # (P,)
-            seg_match = (pref_seg_ids[:, None] == batch_seg_ids[None, :]) & (pref_seg_ids[:, None] >= 0)
-            seg_match_f = seg_match.astype(q_gap_pos.dtype)                     # (P, B)
-
-            num = jnp.sum(seg_match_f * q_gap_pos[:, None], axis=0)             # (B,)
-            den = jnp.sum(seg_match_f, axis=0)                                   # (B,)
-            A_cf_batch_raw = jnp.where(den > 0, num / (den + 1e-8), 0.0)         # (B,)
-            A_cf_batch = jax.lax.stop_gradient(A_cf_batch_raw)
-
-        # Step 2: 构造修正后的 loss_fns
+        # ── Step 2: 构造修正后的 loss_fns ─────────────────────────────────
         def _corrected_critic(params, rng):
-            return self.corrected_critic_loss_fn(batch, A_cf_batch, params, rng)
+            return self.corrected_critic_loss_fn(batch, A_cf_per_sample, params, rng)
 
         def _contrastive_actor(params, rng):
             return self.contrastive_policy_loss_fn(batch, preference_batch, params, rng)
@@ -565,13 +574,22 @@ class SACAgent(flax.struct.PyTreeNode):
             ):
                 info[f"{name}_lr"] = opt_state.hyperparams["learning_rate"]
 
-        info["q_human_mean"] = jnp.mean(q_human_min)
-        info["q_policy_mean"] = jnp.mean(q_policy_min)
-        info["q_gap_mean"] = jnp.mean(q_gap_raw)
-        info["q_gap_positive_ratio"] = jnp.mean(q_gap_raw > 0.0)
-        info["A_cf_raw_mean"] = A_cf_raw
-        info["A_cf_batch_mean"] = jnp.mean(A_cf_batch)
-        info["A_cf_batch_nonzero_ratio"] = jnp.mean(A_cf_batch > 0.0)
+        # ── 全局监控指标（WandB 诊断修正是否在发挥作用）────────────────────
+        # [指标5] pref_match_rate：replay batch 中命中偏好样本的比例
+        #   健康值：初期可低，随 preference buffer 填充应逐渐上升；
+        #           若持续 <10% 可增大 preference buffer 容量或增大 suboptimal_window
+        pref_match_rate = jnp.mean(valid_mask)
+
+        # [指标6] q_gap_where_valid：有效匹配位置的 Q_human - Q_policy 均值
+        #   健康值：应 > 0，说明人类动作确实被 Q 值评估为更好；
+        #           若接近 0 说明 Q 网络还未收敛到能区分好坏动作（正常，训练初期如此）
+        q_gap_where_valid = jnp.sum(q_gap_raw * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+
+        info["pref_match_rate"] = pref_match_rate
+        info["q_human_mean"] = jnp.sum(q_human_min * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+        info["q_policy_mean"] = jnp.sum(q_policy_min * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+        info["q_gap_where_valid"] = q_gap_where_valid
+        info["A_cf_mean"] = jnp.mean(A_cf_per_sample)
 
         return self.replace(state=new_state), info
 

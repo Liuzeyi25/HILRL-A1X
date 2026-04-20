@@ -449,7 +449,6 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
     policy 动作在 learner 更新时由当前策略在线采样。
         """
         batch_size = batch["rewards"].shape[0]
-        pref_size = preference_batch["human_actions"].shape[0]
 
         # 标准 SAC Actor 损失
         temperature = self.forward_temperature()
@@ -487,19 +486,23 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
         human_a = jnp.clip(human_a, -1.0 + clip_eps, 1.0 - clip_eps)
         sampled_policy_a = jnp.clip(sampled_policy_a, -1.0 + clip_eps, 1.0 - clip_eps)
 
-        log_prob_human  = pref_distributions.log_prob(human_a)   # (pref_size,)
-        chex.assert_shape(log_prob_human,  (pref_size,))
-        chex.assert_shape(log_prob_policy, (pref_size,))
+        log_prob_human  = pref_distributions.log_prob(human_a)   # (B,)
+        chex.assert_shape(log_prob_human,  (batch_size,))
+        chex.assert_shape(log_prob_policy, (batch_size,))
 
         # Module 3 核心：BTL / logistic pairwise loss
-        # gap > 0 表示在当前策略下人类动作比策略采样动作更可能。
-        log_prob_gap = log_prob_human - log_prob_policy
-        contrastive_loss = -jnp.mean(jax.nn.log_sigmoid(log_prob_gap))
+        # 只在 valid_mask=True 的位置（有真实偏好样本）计算对比损失。
+        valid_mask = preference_batch["valid_mask"].astype(jnp.float32)  # (B,)
+        log_prob_gap = log_prob_human - log_prob_policy                  # (B,)
+        contrastive_loss_per_sample = -jax.nn.log_sigmoid(log_prob_gap)  # (B,)
+        valid_count = jnp.sum(valid_mask) + 1e-8
+        contrastive_loss = jnp.sum(contrastive_loss_per_sample * valid_mask) / valid_count
+
         contrastive_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
-        pref_action_l2_mean = jnp.mean(
-            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1)
-        )
+        pref_action_l2_mean = jnp.sum(
+            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1) * valid_mask
+        ) / valid_count
 
         info = {
             "actor_loss": total_actor_loss,
@@ -507,9 +510,9 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             "contrastive_loss": contrastive_loss,
             "temperature": temperature,
             "entropy": -log_probs.mean(),
-            "log_prob_human": log_prob_human.mean(),
-            "log_prob_policy_hist": log_prob_policy.mean(),
-            "log_prob_gap": log_prob_gap.mean(),
+            "log_prob_human": jnp.sum(log_prob_human * valid_mask) / valid_count,
+            "log_prob_policy_hist": jnp.sum(log_prob_policy * valid_mask) / valid_count,
+            "log_prob_gap": jnp.sum(log_prob_gap * valid_mask) / valid_count,
             "pref_action_l2_mean": pref_action_l2_mean,
             "contrastive_human_edge_ratio": human_edge_ratio,
             "contrastive_policy_edge_ratio": policy_edge_ratio,
@@ -554,55 +557,39 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]}
         )
 
-        # Step 1: 用 target network 计算 A_cf（stop-gradient）
-        # Hybrid agent 始终截断 [..:-1]
+        # Step 1: 用 target network 逐样本计算 A_cf（stop-gradient）
+        # preference_batch 已由 learner 端精确对齐到 batch（B 条，含 valid_mask）。
+        # Hybrid agent 始终截断最后一维（gripper）：[..., :-1]
         rng, cf_rng = jax.random.split(rng)
-        h_actions = preference_batch["human_actions"][..., :-1]
-
-        # 不再依赖历史 policy_actions：每次更新时用当前策略在偏好状态上重采样动作。
-        rng, cf_policy_rng = jax.random.split(rng)
-        pref_action_dist = self.forward_policy(
-            preference_batch["observations"], rng=cf_policy_rng, train=False
-        )
-        rng, cf_sample_rng = jax.random.split(rng)
-        p_actions, _ = pref_action_dist.sample_and_log_prob(seed=cf_sample_rng)
+        valid_mask_np = preference_batch["valid_mask"]          # (B,) bool
+        # A_cf 用干预时刻记录的历史策略动作 a^π_old，
+        # 这样即使 Module 3 已让当前策略拟合人类动作，A_cf 仍能反映干预时的劣势。
+        h_actions = preference_batch["human_actions"][..., :-1] # (B, action_dim)
+        p_actions = preference_batch["policy_actions"][..., :-1] # (B, action_dim)
 
         q_human_ensemble = self.forward_target_critic(
             preference_batch["observations"], h_actions, rng=cf_rng,
-        )  # (ensemble_size, pref_batch_size)
-        q_human_min = q_human_ensemble.min(axis=0)
+        )  # (ensemble_size, B)
+        q_human_min = q_human_ensemble.min(axis=0)              # (B,)
 
         q_policy_ensemble = self.forward_target_critic(
             preference_batch["observations"], p_actions, rng=cf_rng,
         )
-        q_policy_min = q_policy_ensemble.min(axis=0)
+        q_policy_min = q_policy_ensemble.min(axis=0)            # (B,)
 
-        # stop_gradient 的必要性：
-        # A_cf 是"目标修正量"，若允许梯度回传，优化器会通过缩小
-        # Q_human 和 Q_policy 的差距来最小化修正项（投机捷径），
-        # 而非真正调整策略使其模仿人类动作。
-        # max(0, ...) 确保 A_cf >= 0：只有人类动作明确优于当前策略时才向下修正 Q 值。
-        # 注意：grasp_critic 不参与 A_cf 计算（离散抓取价值与连续动作修正分离）。
-        q_gap_raw = q_human_min - q_policy_min
-        A_cf_raw = jnp.mean(q_gap_raw)
+        # 逐样本 A_cf：只对 valid_mask=True 的位置计算，其余置 0
+        q_gap_raw = q_human_min - q_policy_min                  # (B,)
+        A_cf_batch_raw = jnp.where(
+            valid_mask_np,
+            jnp.maximum(0.0, q_gap_raw),
+            0.0
+        )                                                        # (B,)
+        A_cf_batch = jax.lax.stop_gradient(A_cf_batch_raw)
 
-        # 默认回退：全局标量 A_cf（兼容无 segment_ids 的旧数据）
-        A_cf = jax.lax.stop_gradient(jnp.maximum(0.0, A_cf_raw))
-        A_cf_batch = jnp.broadcast_to(A_cf, batch["rewards"].shape)
-
-        # 按段 A_cf：对每个 segment_id，使用该段偏好样本独立估计 A_cf 并映射到 batch 每条 transition
-        if ("segment_ids" in preference_batch) and ("segment_ids" in batch):
-            pref_seg_ids = preference_batch["segment_ids"].astype(jnp.int32)  # (P,)
-            batch_seg_ids = batch["segment_ids"].astype(jnp.int32)            # (B,)
-
-            q_gap_pos = jnp.maximum(0.0, q_gap_raw)                             # (P,)
-            seg_match = (pref_seg_ids[:, None] == batch_seg_ids[None, :]) & (pref_seg_ids[:, None] >= 0)
-            seg_match_f = seg_match.astype(q_gap_pos.dtype)                     # (P, B)
-
-            num = jnp.sum(seg_match_f * q_gap_pos[:, None], axis=0)             # (B,)
-            den = jnp.sum(seg_match_f, axis=0)                                   # (B,)
-            A_cf_batch_raw = jnp.where(den > 0, num / (den + 1e-8), 0.0)         # (B,)
-            A_cf_batch = jax.lax.stop_gradient(A_cf_batch_raw)
+        # 全局标量（用于监控）
+        valid_mask_f = valid_mask_np.astype(jnp.float32)
+        valid_count = jnp.sum(valid_mask_f) + 1e-8
+        A_cf_raw = jnp.sum(q_gap_raw * valid_mask_f) / valid_count
 
         # Step 2: 构造修正后的 loss_fns（grasp_critic 使用标准损失）
         def _corrected_critic(params, rng):
@@ -640,13 +627,14 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             ):
                 info[f"{name}_lr"] = opt_state.hyperparams["learning_rate"]
 
-        info["q_human_mean"] = jnp.mean(q_human_min)
-        info["q_policy_mean"] = jnp.mean(q_policy_min)
-        info["q_gap_mean"] = jnp.mean(q_gap_raw)
-        info["q_gap_positive_ratio"] = jnp.mean(q_gap_raw > 0.0)
+        info["q_human_mean"] = jnp.sum(q_human_min * valid_mask_f) / valid_count
+        info["q_policy_mean"] = jnp.sum(q_policy_min * valid_mask_f) / valid_count
+        info["q_gap_mean"] = jnp.sum(q_gap_raw * valid_mask_f) / valid_count
+        info["q_gap_positive_ratio"] = jnp.sum((q_gap_raw > 0.0) * valid_mask_f) / valid_count
         info["A_cf_raw_mean"] = A_cf_raw
-        info["A_cf_batch_mean"] = jnp.mean(A_cf_batch)
-        info["A_cf_batch_nonzero_ratio"] = jnp.mean(A_cf_batch > 0.0)
+        info["A_cf_batch_mean"] = jnp.sum(A_cf_batch * valid_mask_f) / valid_count
+        info["A_cf_batch_nonzero_ratio"] = jnp.sum((A_cf_batch > 0.0) * valid_mask_f) / valid_count
+        info["pref_match_rate"] = jnp.mean(valid_mask_f)
 
         return self.replace(state=new_state), info
 

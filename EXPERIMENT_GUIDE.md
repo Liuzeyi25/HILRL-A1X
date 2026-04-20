@@ -131,7 +131,7 @@ print(f"包含 alpha_weight: {'alpha_weight' in demo[0]}")  # 可选
 
 ---
 
-## 阶段二：训练 Progress Model（可选但推荐）
+## 阶段二：训练 Progress Model
 
 > 若跳过此阶段，`train_rlpd_hil.py` 会自动退化为 fallback 模式
 >（每个干预点向前回溯 `--suboptimal_window` 步作为次优片段起点），功能正常但精度较低。

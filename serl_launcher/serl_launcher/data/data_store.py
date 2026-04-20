@@ -176,7 +176,7 @@ class PreferenceBufferDataStore(DataStoreBase):
     def insert(self, data: dict):
         """
         插入一条偏好数据。data 需含键：
-                    "observations", "human_actions", "segment_ids"
+                    "observations", "human_actions", "policy_actions", "segment_ids"
         """
         with self._lock:
             self._buffer.append(data)
@@ -215,6 +215,63 @@ class PreferenceBufferDataStore(DataStoreBase):
 
     def latest_data_id(self) -> int:
         return len(self)
+
+    def get_by_segment_ids(self, segment_ids: np.ndarray) -> dict:
+        """
+        按 segment_id 精确查找偏好条目，返回与输入等长的结果字典。
+
+        Parameters
+        ----------
+        segment_ids : (N,) int32 数组
+            需要查找的 segment_id 列表（来自 replay batch["segment_ids"]）。
+
+        Returns
+        -------
+        dict 包含：
+          "observations"  : (N, ...) 数组，无匹配位置填零
+          "human_actions" : (N, action_dim) 数组，无匹配位置填零
+          "valid_mask"    : (N,) bool，True 表示该位置有对应的偏好样本
+        """
+        with self._lock:
+            # 建立 segment_id -> 条目 的索引（O(N_buffer)，buffer 容量小，可接受）
+            seg_index = {}
+            for item in self._buffer:
+                sid = int(item["segment_ids"])
+                if sid >= 0:
+                    seg_index[sid] = item
+
+        seg_ids_list = segment_ids.tolist()
+        matched = [seg_index.get(sid) for sid in seg_ids_list]
+        valid_mask = np.array([m is not None for m in matched], dtype=bool)
+
+        # 找一个有效样本作为形状模板
+        template = next((m for m in matched if m is not None), None)
+        if template is None:
+            return {"valid_mask": valid_mask}
+
+        # 构建输出数组，无效位置用零填充
+        result = {"valid_mask": valid_mask}
+        for key in ("observations", "human_actions", "policy_actions"):
+            if key not in template:
+                continue
+            tmpl_val = template[key]
+            if isinstance(tmpl_val, dict):
+                result[key] = {}
+                for sub_key, sub_val in tmpl_val.items():
+                    arr = np.zeros((len(matched), *np.asarray(sub_val).shape),
+                                   dtype=np.asarray(sub_val).dtype)
+                    for i, m in enumerate(matched):
+                        if m is not None:
+                            arr[i] = np.asarray(m[key][sub_key])
+                    result[key][sub_key] = arr
+            else:
+                arr = np.zeros((len(matched), *np.asarray(tmpl_val).shape),
+                               dtype=np.asarray(tmpl_val).dtype)
+                for i, m in enumerate(matched):
+                    if m is not None:
+                        arr[i] = np.asarray(m[key])
+                result[key] = arr
+        return result
 
     def get_latest_data(self, from_id: int):
         # Actor-side buffer: 只向 learner 推数据，不从 learner 拉，返回空列表即可

@@ -416,11 +416,13 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                         "human_action":  human_action,
                         "policy_action": policy_action_saved,
                     })
-                    # [Module 3] 偏好对写入：仅记录 (s_{t_i}, a^h)
-                    # 当前策略动作 a^π 在 learner 更新时在线重采样，避免历史动作分布漂移。
+                    # [Module 2+3] 偏好对写入：记录 (s_{t_i}, a^h, a^π_old)
+                    # a^π_old 是干预发生时策略的实际采样动作，用于 Module 2 的 A_cf 计算。
+                    # 对比损失（Module 3）仍使用当前策略的在线重采样动作，两者解耦。
                     preference_data_store.insert({
                         "observations":   obs,
                         "human_actions":  human_action,
+                        "policy_actions": policy_action_saved,
                         "segment_ids":    np.int32(next_segment_uid),
                     })
                     next_segment_uid += 1
@@ -637,10 +639,9 @@ def learner(
     for step in tqdm.tqdm(
         range(start_step, config.max_steps), dynamic_ncols=True, desc="learner"
     ):
-        # 修正更新的触发条件： preference buffer 积累足够的偏好对才切换到修正模式。
-        # 训练初期 buffer 为空时退回标准 RLPD，避免无效的零样本计算开销。
-        # preference buffer 由 actor 通过 TrainerClient 异步推送。
-        use_correction = len(preference_buffer) >= FLAGS.preference_batch_size
+        # 修正更新的触发条件：preference buffer 有任意一条数据即可切换到修正模式。
+        # （新方案按 batch segment_ids 精确查找，不需要凑够 preference_batch_size）
+        use_correction = len(preference_buffer) >= 1
 
         # ── 高 UTD（Update-to-Data）训练：n-1 次 Critic-only + 1 次全局更新 ──
         # 每个 actor step 对应 cta_ratio 次 learner 更新。
@@ -656,10 +657,13 @@ def learner(
 
             with timer.context("train_critics"):
                 if use_correction:
-                    pref_batch = preference_buffer.sample(FLAGS.preference_batch_size)
-                    if pref_batch is not None:
+                    # 按 batch 的 segment_ids 精确查找对应的偏好条目
+                    # 返回与 batch 逐行对齐的 matched_pref（无匹配的行 valid_mask=False）
+                    seg_ids_np = np.asarray(batch["segment_ids"])
+                    matched_pref = preference_buffer.get_by_segment_ids(seg_ids_np)
+                    if "observations" in matched_pref:
                         agent, _ = agent.update_with_correction(
-                            batch, pref_batch,
+                            batch, matched_pref,
                             networks_to_update=train_critic_networks_to_update,
                         )
                     else:
@@ -680,14 +684,15 @@ def learner(
             batch      = concat_batches(batch, demo_batch, axis=0)
 
             if use_correction:
-                pref_batch = preference_buffer.sample(FLAGS.preference_batch_size)
-                if pref_batch is not None:
+                seg_ids_np = np.asarray(batch["segment_ids"])
+                matched_pref = preference_buffer.get_by_segment_ids(seg_ids_np)
+                if "observations" in matched_pref:
                     agent, update_info = agent.update_with_correction(
-                        batch, pref_batch,
+                        batch, matched_pref,
                         networks_to_update=train_networks_to_update,
                     )
                 else:
-                    use_correction = False   # 样本不足，回退
+                    use_correction = False   # 偏好 buffer 还未有任何样本，回退
                     agent, update_info = agent.update(
                         batch,
                         networks_to_update=train_networks_to_update,
