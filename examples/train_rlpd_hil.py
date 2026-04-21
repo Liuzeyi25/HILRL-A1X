@@ -513,13 +513,30 @@ def actor(agent, data_store, intvn_data_store, preference_data_store, env, sampl
                     transitions.append(tr_to_insert)
 
                 # Episode 统计
-                info["episode"]["intervention_count"] = intervention_count
-                info["episode"]["intervention_steps"] = intervention_steps
-                info["episode"]["intervention_rate"] = (
-                    intervention_steps / max(len(episode_buffer), 1)
-                )
-                info["episode"]["n_suboptimal_segs"] = len(suboptimal_segs)
-                info["episode"]["mean_alpha"] = float(alpha_weights.mean())
+                episode_len = len(episode_buffer)
+                episode_return = running_return  # 在清零前保存
+                succeed = bool(info.get("succeed", reward > 0))
+
+                ep_stats = {
+                    # ── 基础 ──────────────────────────────────────
+                    "episode/return":            episode_return,
+                    "episode/length":            episode_len,
+                    "episode/success":           float(succeed),
+                    # ── 干预质量 ──────────────────────────────────
+                    "episode/intervention_rate": intervention_steps / max(episode_len, 1),
+                    "episode/intervention_count": intervention_count,   # 次干预事件数
+                    # ── Module 1 识别质量 ──────────────────────────
+                    "episode/n_suboptimal_segs":  len(suboptimal_segs),
+                    "episode/suboptimal_ratio":   float(
+                        np.sum(alpha_weights > 0) / max(episode_len, 1)
+                    ),  # 次优片段占 episode 的比例
+                    "episode/mean_alpha":          float(alpha_weights[alpha_weights > 0].mean())
+                                                   if np.any(alpha_weights > 0) else 0.0,
+                    # 平均干预步长度（干预总步 / 干预次数）
+                    "episode/avg_intervention_len": intervention_steps / max(intervention_count, 1),
+                }
+                # 将 episode 统计嵌入 info 以兼容原有 send-stats 通道
+                info["episode"].update(ep_stats)
                 stats = {"environment": info}
                 client.request("send-stats", stats)
 
@@ -717,9 +734,37 @@ def learner(
 
         # ── 日志 ──────────────────────────────────────────────────────
         if step % config.log_period == 0 and wandb_logger:
-            wandb_logger.log(update_info, step=step)
+            # 按模块加前缀分组，避免 wandb 面板混乱
+            critic_info  = {f"critic/{k}":  v for k, v in update_info.items()
+                            if k.startswith(("corrected_critic", "critic_loss",
+                                             "predicted_qs", "target_qs", "uncorrected",
+                                             "correction_", "A_cf", "mean_alpha",
+                                             "alpha_nonzero", "rewards"))}
+            module2_info = {f"module2/{k}": v for k, v in update_info.items()
+                            if k.startswith(("q_human", "q_policy", "q_gap",
+                                             "A_cf_raw", "A_cf_batch", "pref_match"))}
+            actor_info   = {f"actor/{k}":   v for k, v in update_info.items()
+                            if k.startswith(("actor_loss", "rlpd_actor", "contrastive_loss",
+                                             "entropy", "temperature",
+                                             "log_prob_", "pref_action_l2",
+                                             "contrastive_human", "contrastive_policy"))}
+            train_info   = {"train/use_correction": float(use_correction),
+                            "train/preference_buffer_size": len(preference_buffer)}
+            # 其余未分组的（如 lr、grasp_critic 等）直接上报
+            known_prefixes = (
+                "corrected_critic", "critic_loss", "predicted_qs", "target_qs",
+                "uncorrected", "correction_", "A_cf", "mean_alpha", "alpha_nonzero",
+                "rewards", "q_human", "q_policy", "q_gap", "A_cf_raw", "A_cf_batch",
+                "pref_match", "actor_loss", "rlpd_actor", "contrastive_loss",
+                "entropy", "temperature", "log_prob_", "pref_action_l2",
+                "contrastive_human", "contrastive_policy", "use_correction",
+            )
+            misc_info = {k: v for k, v in update_info.items()
+                         if not any(k.startswith(p) for p in known_prefixes)}
+
+            wandb_logger.log({**critic_info, **module2_info, **actor_info,
+                              **train_info, **misc_info}, step=step)
             wandb_logger.log({"timer": timer.get_average_times()}, step=step)
-            wandb_logger.log({"preference_buffer_size": len(preference_buffer)}, step=step)
 
         # ── Checkpoint ────────────────────────────────────────────────
         if (
