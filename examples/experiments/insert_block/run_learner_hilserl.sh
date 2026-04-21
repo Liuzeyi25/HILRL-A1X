@@ -54,7 +54,7 @@ RUN_TAG="none__nocov__0303_152248"
 python ../../train_rlpd_proxyrl.py "$@" \
     --exp_name=insert_block \
     --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/insert_block/hilserl/${RUN_TAG} \
-    --demo_path=./demo_data/20260228/traj_10.pkl \
+    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/demo_data/20260421/all_demos_merged.pkl \
     --learner \
     --run_tag="${RUN_TAG}" \
     --sampling_strategy="${SAMPLING_STRATEGY}" \

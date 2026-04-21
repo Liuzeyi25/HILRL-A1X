@@ -1,5 +1,5 @@
 python ./examples/train_progress_model.py\
-    --demo_dir  examples/experiments/insert_block/demo_data/20260418 \
+    --demo_dir  examples/experiments/insert_block/demo_data/20260421 \
     --buffer_dir examples/experiments/insert_block/buffer \
     --output_dir examples/experiments/insert_block/progress_model \
     --hidden_dim 128 \

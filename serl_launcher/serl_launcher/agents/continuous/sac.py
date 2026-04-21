@@ -424,7 +424,10 @@ class SACAgent(flax.struct.PyTreeNode):
 
         # 不再使用历史 policy_actions：每次 learner 更新时在当前策略下重采样。
         rng, pref_sample_rng = jax.random.split(rng)
-        sampled_policy_a, log_prob_policy = pref_distributions.sample_and_log_prob(seed=pref_sample_rng)
+        sampled_policy_a = pref_distributions.sample(seed=pref_sample_rng)
+
+        # 必须 stop_gradient，把策略采样的动作当作固定的“被拒绝样本”
+        sampled_policy_a = jax.lax.stop_gradient(sampled_policy_a)
 
         # 数值稳定性：Tanh-squashed 分布在 |a|=1 处 log_prob 可能出现极端值。
         # 在计算 log_prob 前做轻量裁剪，避免 atanh(±1) 触发数值爆炸。
@@ -435,6 +438,7 @@ class SACAgent(flax.struct.PyTreeNode):
         sampled_policy_a = jnp.clip(sampled_policy_a, -1.0 + clip_eps, 1.0 - clip_eps)
 
         log_prob_human  = pref_distributions.log_prob(human_a)   # (B,)
+        log_prob_policy = pref_distributions.log_prob(sampled_policy_a)  # (B,)
         chex.assert_shape(log_prob_human,  (batch_size,))
         chex.assert_shape(log_prob_policy, (batch_size,))
 
