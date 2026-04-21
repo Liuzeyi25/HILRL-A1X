@@ -311,9 +311,19 @@ class SACAgent(flax.struct.PyTreeNode):
         #   α(t)    : (B,) 次优片段内 = exp(-λ*(t_i-t))，其余 = 0
         #   A_cf(t) : (B,) 逐样本修正量；来自与该条 transition 同 segment_id 的偏好样本，
         #             无对应样本时为 0.0（不修正）
-        alpha_weights = batch["alpha_weight"]          # (B,)
-        chex.assert_shape(alpha_weights, (batch_size,))
-        chex.assert_shape(A_cf, (batch_size,))          # 调用方保证逐样本对齐
+        alpha_weights_raw = batch["alpha_weight"]       # (B,) 原始衰减值
+        chex.assert_shape(alpha_weights_raw, (batch_size,))
+        chex.assert_shape(A_cf, (batch_size,))           # 调用方保证逐样本对齐
+
+        # flat_alpha_correction=True：次优片段内 α 统一置 1（不做位置衰减），
+        #   片段外 α=0 保持不变。效果是对整条次优片段施加等强度修正。
+        # flat_alpha_correction=False（默认）：保留 exp(-λ*(t_i-t)) 位置衰减，
+        #   t_i 处修正最强，t_a 处最弱。
+        if self.config.get("flat_alpha_correction", False):
+            alpha_weights = jnp.where(alpha_weights_raw > 0.0, 1.0, 0.0)
+        else:
+            alpha_weights = alpha_weights_raw
+
         corrected_target_q = target_q - alpha_weights * A_cf
         chex.assert_shape(corrected_target_q, (batch_size,))
 

@@ -87,6 +87,11 @@ flags.DEFINE_float(
     "次优片段位置感知衰减系数 λ。α(t)=exp(-λ*(t_i-t))，"
     "λ=3 时 t_a 处≈0.05，t_i 处=1.0。",
 )
+flags.DEFINE_boolean(
+    "flat_alpha_correction", False,
+    "True：次优片段内 α 统一置 1（对整段施加等强度修正）；"
+    "False（默认）：保留 exp(-λ*(t_i-t)) 位置衰减。",
+)
 flags.DEFINE_float(
     "contrastive_coef", 0.2,
     "对比损失系数 β。总 Actor 损失 = L_RLPD + β * L_contrast。",
@@ -779,9 +784,10 @@ def main(_):
             f"当前 setup_mode={config.setup_mode}。"
         )
 
-    # [Module 3] 注入对比损失系数到 agent.config
+    # [Module 2+3] 注入 HIL 超参到 agent.config
     hil_config = dict(agent.config)
     hil_config["contrastive_coef"] = FLAGS.contrastive_coef
+    hil_config["flat_alpha_correction"] = FLAGS.flat_alpha_correction
     agent = agent.replace(config=hil_config)
 
     # 分发到所有设备
