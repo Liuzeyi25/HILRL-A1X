@@ -686,6 +686,7 @@ def learner(
                     if "observations" in matched_pref:
                         agent, _ = agent.update_with_correction(
                             batch, matched_pref,
+                            preference_batch_direct=None,  # Critic-only不需要对比项
                             networks_to_update=train_critic_networks_to_update,
                         )
                     else:
@@ -708,9 +709,14 @@ def learner(
             if use_correction:
                 seg_ids_np = np.asarray(batch["segment_ids"])
                 matched_pref = preference_buffer.get_by_segment_ids(seg_ids_np)
-                if "observations" in matched_pref:
+                # 独立采样纯净 preference batch 供 Module 3 使用（不依赖 segment_id 匹配）
+                pref_batch_direct = preference_buffer.sample(
+                    min(FLAGS.preference_batch_size, len(preference_buffer))
+                )
+                if "observations" in matched_pref and pref_batch_direct is not None:
                     agent, update_info = agent.update_with_correction(
                         batch, matched_pref,
+                        preference_batch_direct=pref_batch_direct,
                         networks_to_update=train_networks_to_update,
                     )
                 else:

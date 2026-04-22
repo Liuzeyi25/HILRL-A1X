@@ -184,12 +184,15 @@ class PreferenceBufferDataStore(DataStoreBase):
     def sample(self, batch_size: int) -> Optional[frozen_dict.FrozenDict]:
         """
         随机采样 batch_size 条偏好数据，返回 FrozenDict。
-        若缓冲区数据不足 batch_size，返回 None。
+        若缓冲区为空则返回 None；数据不足 batch_size 时允许重复采样（replace=True），
+        保证始终能返回完整 batch，不再依赖 preference_batch_size 阈值。
         """
         with self._lock:
-            if len(self._buffer) < batch_size:
+            n = len(self._buffer)
+            if n == 0:
                 return None
-            indices = np.random.choice(len(self._buffer), size=batch_size, replace=False)
+            # 数据量不足时允许重复采样，保证 batch_size 固定
+            indices = np.random.choice(n, size=batch_size, replace=(n < batch_size))
             items = [self._buffer[i] for i in indices]
 
         # list-of-dict -> dict-of-array（格式与 MemoryEfficientReplayBuffer.sample 保持一致）

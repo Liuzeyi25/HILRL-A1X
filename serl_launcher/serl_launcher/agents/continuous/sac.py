@@ -422,41 +422,38 @@ class SACAgent(flax.struct.PyTreeNode):
         policy_dim = pref_distributions.distribution.loc.shape[-1]
         human_a = preference_batch["human_actions"][..., :policy_dim]
 
-        # 不再使用历史 policy_actions：每次 learner 更新时在当前策略下重采样。
-        rng, pref_sample_rng = jax.random.split(rng)
-        sampled_policy_a = pref_distributions.sample(seed=pref_sample_rng)
-
-        # 必须 stop_gradient，把策略采样的动作当作固定的“被拒绝样本”
-        sampled_policy_a = jax.lax.stop_gradient(sampled_policy_a)
+        # ✅ 修复：使用 buffer 中记录的历史策略动作作为"被拒绝动作"，
+        # 而非每步重采样——重采样会导致梯度方向每 step 随机变化，引起 log_prob 震荡。
+        # 历史动作固定（干预时刻实际执行的 a^π），梯度方向稳定。
+        policy_a_hist = preference_batch["policy_actions"][..., :policy_dim]
+        policy_a_hist = jax.lax.stop_gradient(policy_a_hist)
 
         # 数值稳定性：Tanh-squashed 分布在 |a|=1 处 log_prob 可能出现极端值。
         # 在计算 log_prob 前做轻量裁剪，避免 atanh(±1) 触发数值爆炸。
         clip_eps = self.config.get("contrastive_action_clip_eps", 1e-6)
-        human_edge_ratio = jnp.mean(jnp.abs(human_a) >= (1.0 - clip_eps))
-        policy_edge_ratio = jnp.mean(jnp.abs(sampled_policy_a) >= (1.0 - clip_eps))
-        human_a = jnp.clip(human_a, -1.0 + clip_eps, 1.0 - clip_eps)
-        sampled_policy_a = jnp.clip(sampled_policy_a, -1.0 + clip_eps, 1.0 - clip_eps)
+        human_a       = jnp.clip(human_a,       -1.0 + clip_eps, 1.0 - clip_eps)
+        policy_a_hist = jnp.clip(policy_a_hist, -1.0 + clip_eps, 1.0 - clip_eps)
 
-        log_prob_human  = pref_distributions.log_prob(human_a)   # (B,)
-        log_prob_policy = pref_distributions.log_prob(sampled_policy_a)  # (B,)
-        chex.assert_shape(log_prob_human,  (batch_size,))
-        chex.assert_shape(log_prob_policy, (batch_size,))
+        pref_batch_size = preference_batch["human_actions"].shape[0]
+        # ✅ 除以 policy_dim 归一化：防止高维动作空间下 log_prob 绝对值过大导致 sigmoid 饱和
+        log_prob_human  = pref_distributions.log_prob(human_a)        / policy_dim  # (B,)
+        log_prob_policy = pref_distributions.log_prob(policy_a_hist)  / policy_dim  # (B,)
+        chex.assert_shape(log_prob_human,  (pref_batch_size,))
+        chex.assert_shape(log_prob_policy, (pref_batch_size,))
 
         # Module 3 核心：BTL / logistic pairwise loss
-        # 只在 valid_mask=True 的位置（有真实偏好样本）计算对比损失，
-        # 无匹配的位置 log_sigmoid(0)=log(0.5) 为无信息项，用 mask 屏蔽避免干扰。
-        valid_mask = preference_batch["valid_mask"].astype(jnp.float32)  # (B,)
+        # preference_batch_direct 是独立采样的纯净 batch，每条均有效，直接取均值。
         log_prob_gap = log_prob_human - log_prob_policy                  # (B,)
+        # ✅ 硬裁剪：防止 gap 极端值导致 log_sigmoid 数值溢出
+        log_prob_gap = jnp.clip(log_prob_gap, -10.0, 10.0)
         contrastive_loss_per_sample = -jax.nn.log_sigmoid(log_prob_gap)  # (B,)
-        # 只对有效样本求均值；若无有效样本则 contrastive_loss=0（不影响 actor）
-        valid_count = jnp.sum(valid_mask) + 1e-8
-        contrastive_loss = jnp.sum(contrastive_loss_per_sample * valid_mask) / valid_count
+        contrastive_loss = jnp.mean(contrastive_loss_per_sample)
 
         contrastive_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + contrastive_coef * contrastive_loss
-        pref_action_l2_mean = jnp.sum(
-            jnp.linalg.norm(human_a - sampled_policy_a, axis=-1) * valid_mask
-        ) / valid_count
+        pref_action_l2_mean = jnp.mean(
+            jnp.linalg.norm(human_a - policy_a_hist, axis=-1)
+        )
 
         info = {
             "actor_loss": total_actor_loss,
@@ -464,12 +461,10 @@ class SACAgent(flax.struct.PyTreeNode):
             "contrastive_loss": contrastive_loss,
             "temperature": temperature,
             "entropy": -log_probs.mean(),
-            "log_prob_human": jnp.sum(log_prob_human * valid_mask) / valid_count,
-            "log_prob_policy_hist": jnp.sum(log_prob_policy * valid_mask) / valid_count,
-            "log_prob_gap": jnp.sum(log_prob_gap * valid_mask) / valid_count,
+            "log_prob_human":  jnp.mean(log_prob_human),
+            "log_prob_policy": jnp.mean(log_prob_policy),
+            "log_prob_gap":    jnp.mean(log_prob_gap),
             "pref_action_l2_mean": pref_action_l2_mean,
-            "contrastive_human_edge_ratio": human_edge_ratio,
-            "contrastive_policy_edge_ratio": policy_edge_ratio,
         }
         return total_actor_loss, info
 
@@ -481,7 +476,8 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_with_correction(
         self,
         batch,
-        preference_batch,
+        matched_pref,               # segment_id 对齐（仅用于 Module 2 A_cf 计算）
+        preference_batch_direct,    # 独立采样的纯净 batch（用于 Module 3 对比损失）
         *,
         pmap_axis=None,
         networks_to_update=frozenset({"actor", "critic", "temperature"}),
@@ -489,9 +485,10 @@ class SACAgent(flax.struct.PyTreeNode):
         """
         同时应用 Module 2（Q 值修正）和 Module 3（对比策略学习）。
 
-        1. target network 推断 preference_batch → 计算 A_cf（stop-gradient）
+        1. target network 推断 matched_pref → 计算 A_cf（stop-gradient），Module 2
         2. Critic 用 corrected_critic_loss_fn（注入 A_cf 和 alpha_weight）
-        3. Actor  用 contrastive_policy_loss_fn（注入 preference_batch）
+        3. Actor  用 contrastive_policy_loss_fn（注入 preference_batch_direct）
+           - preference_batch_direct=None 时回退标准 RLPD actor loss（Critic-only 更新）
         4. Temperature 同标准 SAC
 
         兼容 fix_gripper=True（preference 动作在各 loss fn 内部截断）。
@@ -528,26 +525,26 @@ class SACAgent(flax.struct.PyTreeNode):
         # 这样即使 Module 3 已让当前策略拟合人类动作，A_cf 仍能反映干预时的劣势。
         # fix_gripper 兼容：截掉最后一维（夹爪）
         if self.config["fix_gripper"]:
-            h_actions = preference_batch["human_actions"][..., :-1]
-            p_actions = preference_batch["policy_actions"][..., :-1]
+            h_actions = matched_pref["human_actions"][..., :-1]
+            p_actions = matched_pref["policy_actions"][..., :-1]
         else:
-            h_actions = preference_batch["human_actions"]
-            p_actions = preference_batch["policy_actions"]
+            h_actions = matched_pref["human_actions"]
+            p_actions = matched_pref["policy_actions"]
 
         # target critic 评估两种动作的 Q 值
         q_human_ensemble = self.forward_target_critic(
-            preference_batch["observations"], h_actions, rng=cf_rng,
+            matched_pref["observations"], h_actions, rng=cf_rng,
         )  # (ensemble_size, B)
         q_human_min = q_human_ensemble.min(axis=0)    # (B,)
 
         q_policy_ensemble = self.forward_target_critic(
-            preference_batch["observations"], p_actions, rng=cf_rng,
+            matched_pref["observations"], p_actions, rng=cf_rng,
         )  # (ensemble_size, B)
         q_policy_min = q_policy_ensemble.min(axis=0)  # (B,)
 
         # 逐样本 A_cf：仅在 valid_mask=True 且 Q_human > Q_policy 时才有修正量
         # stop_gradient：A_cf 是外部信号，不允许梯度通过它传回 Q 网络
-        valid_mask = preference_batch["valid_mask"].astype(jnp.float32)  # (B,)
+        valid_mask = matched_pref["valid_mask"].astype(jnp.float32)  # (B,)
         q_gap_raw = q_human_min - q_policy_min                           # (B,)
         A_cf_per_sample = jax.lax.stop_gradient(
             valid_mask * jnp.maximum(0.0, q_gap_raw)                     # (B,)
@@ -558,7 +555,10 @@ class SACAgent(flax.struct.PyTreeNode):
             return self.corrected_critic_loss_fn(batch, A_cf_per_sample, params, rng)
 
         def _contrastive_actor(params, rng):
-            return self.contrastive_policy_loss_fn(batch, preference_batch, params, rng)
+            if preference_batch_direct is None:
+                # Critic-only 更新时传 None，回退标准 RLPD actor loss
+                return self.policy_loss_fn(batch, params, rng)
+            return self.contrastive_policy_loss_fn(batch, preference_batch_direct, params, rng)
 
         loss_fns = {
             "critic":      _corrected_critic,
