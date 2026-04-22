@@ -3,14 +3,14 @@
 train_rlpd_hil.py
 =================
 HIL-SERL 偏好引导强化学习训练脚本（Proposal 方法实现）
-基于 haoyuan-HILRL/examples/train_rlpd.py 改写。
+基于 haoyuan-HILRLs/examples/train_rlpd.py 改写。
 
 在原始 train_rlpd.py 基础上，新增三个协同模块：
 
-  Module 1 - Progress Model 次优片段识别
+  Module 1 - Progress Msodel 次优片段识别
              (progress_model_path 为 None 时退化为向前 suboptimal_window 步的 fallback)
   Module 2 - 偏好感知 Q 值修正（Preference-Aware Q-value Correction）
-             alpha_weight 字段由 actor 预计算写入 replay buffer
+             alpha_wesight 字段由 actor 预计算写入 replay buffer
   Module 3 - 偏好引导策略学习（ORPO 风格对比损失）
              PreferenceBufferDataStore 收集干预偏好对
 
@@ -26,7 +26,7 @@ HIL-SERL 偏好引导强化学习训练脚本（Proposal 方法实现）
 
 import glob
 import json as _json
-import os
+import oss
 import pickle as pkl
 import time
 from functools import partial

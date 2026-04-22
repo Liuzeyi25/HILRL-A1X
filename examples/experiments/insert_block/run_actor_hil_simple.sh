@@ -10,7 +10,7 @@
 #   IP=192.168.1.10 bash run_actor_hil_simple.sh                    # 远程 Learner
 # ─────────────────────────────────────────────────────────────────────────────
 
-RUN_TAG=${RUN_TAG:-"latest"}
+RUN_TAG=${RUN_TAG:-"hilserl"}
 IP=${IP:-"localhost"}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

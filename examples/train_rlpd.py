@@ -3,6 +3,9 @@
 import glob
 import time
 import jax
+import logging
+logging.getLogger("curobo").setLevel(logging.WARNING)
+
 import jax.numpy as jnp
 import numpy as np
 import tqdm
@@ -35,8 +38,6 @@ from serl_launcher.utils.launcher import (
 from serl_launcher.data.data_store import MemoryEfficientReplayBufferDataStore
 
 from experiments.mappings import CONFIG_MAPPING
-from sampling_strategies import make_sampling_strategy
-from cov_actor_loss import make_cov_policy_loss_fn, compute_label_cov_stats_from_batch
 
 FLAGS = flags.FLAGS
 
@@ -57,26 +58,6 @@ flags.DEFINE_integer("eval_episodes", 10, "Number of episodes to evaluate in eva
 flags.DEFINE_boolean(
     "debug", False, "Debug mode."
 )  # debug mode will disable wandb logging
-
-# ---- 采样策略 (none / workspace_filtering / random_drop / per) ----
-flags.DEFINE_string(
-    "sampling_strategy", "none",
-    "Sampling strategy for learner batches: none, workspace_filtering, random_drop, per.",
-)
-flags.DEFINE_string(
-    "sampling_strategy_kwargs", "",
-    'JSON-encoded kwargs for the sampling strategy, e.g. '
-    '\'{"x_range": [0.2, 0.8], "drop_ratio": 0.15}\'.',
-)
-
-# ---- Cov Actor Loss (协方差熵截断 Actor Loss) ----
-flags.DEFINE_boolean(
-    "use_cov_actor_loss", False,
-    "Use covariance-based entropy-bounded actor loss instead of standard SAC actor loss.",
-)
-flags.DEFINE_integer("cov_K", 4, "MC samples per state for cov actor loss.")
-flags.DEFINE_float("cov_q_low", 0.05, "Lower percentile for |c| bound.")
-flags.DEFINE_float("cov_q_high", 0.90, "Upper percentile for |c| bound.")
 
 # ---- Run tag: sampling + cov + timestamp (set by launch script) ----
 flags.DEFINE_string(
@@ -253,8 +234,6 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
                 rewards=reward,
                 masks=1.0 - done,
                 dones=done,
-                # 数据来源标签: 1=在线策略, 2=在线干预
-                labels=2 if already_intervened else 1,
             )
             if 'grasp_penalty' in info:
                 transition['grasp_penalty']= info['grasp_penalty']
@@ -389,8 +368,7 @@ def eval_policy(agent, env, sampling_rng):
 ##############################################################################
 
 
-def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None,
-            sampling_strategy=None):
+def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
     """
     The learner loop, which runs when "--learner" is set to True.
     """
@@ -471,11 +449,6 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None,
                 demo_batch = next(demo_iterator)
                 batch = concat_batches(batch, demo_batch, axis=0)
 
-            # ---- 采样策略过滤 ----
-            if sampling_strategy is not None:
-                sampling_rng, _key = jax.random.split(sampling_rng)
-                batch = sampling_strategy.apply(batch, _key, agent=agent)
-
             with timer.context("train_critics"):
                 agent, critics_info = agent.update(
                     batch,
@@ -486,11 +459,6 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None,
             batch = next(replay_iterator)
             demo_batch = next(demo_iterator)
             batch = concat_batches(batch, demo_batch, axis=0)
-
-            # ---- 采样策略过滤 ----
-            if sampling_strategy is not None:
-                sampling_rng, _key = jax.random.split(sampling_rng)
-                batch = sampling_strategy.apply(batch, _key, agent=agent)
 
             agent, update_info = agent.update(
                 batch,
@@ -504,17 +472,6 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None,
         if step % config.log_period == 0 and wandb_logger:
             wandb_logger.log(update_info, step=step)
             wandb_logger.log({"timer": timer.get_average_times()}, step=step)
-            # ---- 按 label 统计各组 |c(s)| 均值（不依赖 cov loss 是否开启）----
-            sampling_rng, _cov_diag_rng = jax.random.split(sampling_rng)
-            _label_cov = compute_label_cov_stats_from_batch(
-                forward_policy_fn=agent.forward_policy,
-                forward_critic_fn=agent.forward_critic,
-                temperature=agent.forward_temperature(),
-                batch=batch,
-                rng=_cov_diag_rng,
-                K=FLAGS.cov_K,
-            )
-            wandb_logger.log({"cov_diag": _label_cov}, step=step)
 
         if (
             step > 0
@@ -582,24 +539,6 @@ def main(_):
     else:
         raise NotImplementedError(f"Unknown setup mode: {config.setup_mode}")
 
-    # ---- 注入 Cov Actor Loss 配置到 agent.config ----
-    if FLAGS.use_cov_actor_loss:
-        agent.config["use_cov_actor_loss"] = True
-        agent.config["cov_K"] = FLAGS.cov_K
-        agent.config["cov_q_low"] = FLAGS.cov_q_low
-        agent.config["cov_q_high"] = FLAGS.cov_q_high
-        # 将工厂函数存入 config，避免在 serl_launcher 包内部 import examples 目录
-        agent.config["_cov_fn_factory"] = make_cov_policy_loss_fn
-        print_banner(
-            "[ACTIVE] COV ACTOR LOSS",
-            [
-                f"MC samples  K        = {FLAGS.cov_K}",
-                f"Lower  percentile    = {FLAGS.cov_q_low}",
-                f"Upper  percentile    = {FLAGS.cov_q_high}",
-            ],
-            color="cyan",
-        )
-
     # replicate agent across devices
     # need the jnp.array to avoid a bug where device_put doesn't recognize primitives
     agent = jax.device_put(
@@ -647,7 +586,6 @@ def main(_):
             capacity=config.replay_buffer_capacity,
             image_keys=config.image_keys,
             include_grasp_penalty=include_grasp_penalty,
-            include_label=True,
         )
 
         assert FLAGS.demo_path is not None
@@ -657,8 +595,6 @@ def main(_):
                 for transition in transitions:
                     if 'infos' in transition and 'grasp_penalty' in transition['infos']:
                         transition['grasp_penalty'] = transition['infos']['grasp_penalty']
-                    # 离线demo标签: 0=离线演示数据
-                    transition['labels'] = 0
                     demo_buffer.insert(transition)
         print_green(f"demo buffer size: {len(demo_buffer)}")
         print_green(f"online buffer size: {len(replay_buffer)}")
@@ -670,8 +606,6 @@ def main(_):
                 with open(file, "rb") as f:
                     transitions = pkl.load(f)
                     for transition in transitions:
-                        # 兼容旧格式：若无 labels 字段则默认在线策略标签
-                        transition.setdefault('labels', 1)
                         replay_buffer.insert(transition)
             print_green(
                 f"Loaded previous buffer data. Replay buffer size: {len(replay_buffer)}"
@@ -686,27 +620,9 @@ def main(_):
                 with open(file, "rb") as f:
                     transitions = pkl.load(f)
                     for transition in transitions:
-                        # 兼容旧格式：若无 labels 字段则默认在线干预标签
-                        transition.setdefault('labels', 2)
                         demo_buffer.insert(transition)
             print_green(
                 f"Loaded previous demo buffer data. Demo buffer size: {len(demo_buffer)}"
-            )
-
-        # ---- 构建采样策略 ----
-        import json as _json
-        _ss_kwargs = _json.loads(FLAGS.sampling_strategy_kwargs) if FLAGS.sampling_strategy_kwargs else {}
-        _sampling_strategy = make_sampling_strategy(FLAGS.sampling_strategy, **_ss_kwargs)
-        if FLAGS.sampling_strategy == "none":
-            print_green(f"sampling strategy: none (no filtering)")
-        else:
-            print_banner(
-                "[ACTIVE] SAMPLING STRATEGY",
-                [
-                    f"strategy  = {FLAGS.sampling_strategy}",
-                    f"kwargs    = {_ss_kwargs if _ss_kwargs else '(default)'}",
-                ],
-                color="yellow",
             )
 
         # learner loop
@@ -717,7 +633,6 @@ def main(_):
             replay_buffer,
             demo_buffer=demo_buffer,
             wandb_logger=wandb_logger,
-            sampling_strategy=_sampling_strategy,
         )
 
     elif FLAGS.actor:

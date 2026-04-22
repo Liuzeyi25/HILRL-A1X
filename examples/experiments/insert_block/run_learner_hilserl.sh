@@ -49,13 +49,11 @@ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 #     RUN_TAG="${SAMPLING_STRATEGY}__${COV_LABEL}__${TIMESTAMP}"
 # fi
 
-RUN_TAG="none__nocov__0303_152248"
+RUN_TAG="hilserl-0422_1"
 
-python ../../train_rlpd_proxyrl.py "$@" \
+python ../../train_rlpd.py "$@" \
     --exp_name=insert_block \
-    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/insert_block/hilserl/${RUN_TAG} \
+    --checkpoint_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/hilserl/${RUN_TAG} \
     --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/demo_data/20260421/all_demos_merged.pkl \
     --learner \
-    --run_tag="${RUN_TAG}" \
-    --sampling_strategy="${SAMPLING_STRATEGY}" \
-    # "${EXTRA_ARGS[@]}"
+    --run_tag="${RUN_TAG}"
