@@ -601,6 +601,193 @@ class SACAgent(flax.struct.PyTreeNode):
 
         return self.replace(state=new_state), info
 
+    # =========================================================================
+    # [HIL-SERL BC] Module 3 替代方案：Pre-tanh MSE 行为克隆损失
+    # =========================================================================
+
+    def bc_policy_loss_fn(
+        self,
+        batch,
+        preference_batch,
+        params: Params,
+        rng: PRNGKey,
+    ):
+        """
+        Module 3 BC 替代方案：Pre-tanh 空间行为克隆损失。
+
+        L_actor = L_RLPD + β · L_BC
+        L_BC    = E[||μ_θ(s) - atanh(a^h)||²]
+
+        只约束策略均值（意图）靠近人类动作，完全不涉及 σ，
+        与 SAC temperature 机制正交，无 entropy 耦合。
+        相比 contrastive_policy_loss_fn 消除了 1/σ² 梯度项，
+        entropy 不会因对比损失而被压崩。
+        """
+        batch_size = batch["rewards"].shape[0]
+
+        # ── 标准 RLPD Actor 损失 ──────────────────────────────────────────
+        temperature = self.forward_temperature()
+        rng, policy_rng, sample_rng, critic_rng = jax.random.split(rng, 4)
+
+        action_distributions = self.forward_policy(
+            batch["observations"], rng=policy_rng, grad_params=params
+        )
+        actions, log_probs = action_distributions.sample_and_log_prob(seed=sample_rng)
+        predicted_qs = self.forward_critic(batch["observations"], actions, rng=critic_rng)
+        predicted_q = predicted_qs.mean(axis=0)
+        chex.assert_shape(predicted_q, (batch_size,))
+        chex.assert_shape(log_probs, (batch_size,))
+
+        rlpd_loss = -jnp.mean(predicted_q - temperature * log_probs)
+
+        # ── Module 3 BC 核心：Pre-tanh 空间 MSE ──────────────────────────
+        rng, pref_rng = jax.random.split(rng)
+        pref_distributions = self.forward_policy(
+            preference_batch["observations"], rng=pref_rng, grad_params=params
+        )
+
+        # 取策略均值（确定性意图），不采样，不涉及 σ
+        mu_theta = pref_distributions.distribution.loc   # (B, D)，pre-tanh 均值
+
+        policy_dim = mu_theta.shape[-1]
+        human_a = preference_batch["human_actions"][..., :policy_dim]   # (B, D)
+
+        # 人类动作映射到 pre-tanh 空间
+        # clip_eps=1e-2 确保 atanh 有界：atanh(0.99) ≈ 2.65
+        clip_eps = self.config.get("bc_action_clip_eps", 1e-2)
+        human_a_clipped = jnp.clip(human_a, -1.0 + clip_eps, 1.0 - clip_eps)
+        u_human = jnp.arctanh(human_a_clipped)   # (B, D)，∈ [-2.65, 2.65]
+
+        # Per-sample MSE，在 pre-tanh 空间计算策略意图与人类动作的距离
+        pref_batch_size = preference_batch["human_actions"].shape[0]
+        bc_loss_per_sample = jnp.mean((mu_theta - u_human) ** 2, axis=-1)  # (B,)
+        bc_loss = jnp.mean(bc_loss_per_sample)                              # scalar
+        chex.assert_shape(bc_loss_per_sample, (pref_batch_size,))
+
+        bc_coef = self.config.get("contrastive_coef", 0.1)   # 复用现有 flag
+        total_actor_loss = rlpd_loss + bc_coef * bc_loss
+
+        # 监控：策略均值与人类动作在 tanh 空间的 L2 距离（有物理意义的指标）
+        mu_tanh = jnp.tanh(mu_theta)   # (B, D)
+        action_distance = jnp.mean(jnp.linalg.norm(mu_tanh - human_a, axis=-1))
+
+        info = {
+            "actor_loss":       total_actor_loss,
+            "rlpd_actor_loss":  rlpd_loss,
+            "bc_loss":          bc_loss,
+            "temperature":      temperature,
+            "entropy":          -log_probs.mean(),
+            "action_distance":  action_distance,
+        }
+        return total_actor_loss, info
+
+    @partial(jax.jit, static_argnames=("pmap_axis", "networks_to_update"))
+    def update_with_correction_bc(
+        self,
+        batch,
+        matched_pref,               # segment_id 对齐（仅用于 Module 2 A_cf 计算）
+        preference_batch_direct,    # 独立采样的纯净 batch（用于 Module 3 BC 损失）
+        *,
+        pmap_axis=None,
+        networks_to_update=frozenset({"actor", "critic", "temperature"}),
+    ):
+        """
+        联合更新 Module 2（Q 值修正）+ Module 3 BC 版（pre-tanh MSE）。
+
+        与 update_with_correction 的唯一区别：
+          actor 分支调用 bc_policy_loss_fn 而非 contrastive_policy_loss_fn，
+          消除对比损失中 1/σ² 梯度项导致的 entropy 崩塌。
+        """
+        batch_size = batch["rewards"].shape[0]
+        chex.assert_tree_shape_prefix(batch, (batch_size,))
+
+        if self.config["image_keys"][0] not in batch["next_observations"]:
+            batch = _unpack(batch)
+
+        rng, aug_rng = jax.random.split(self.state.rng)
+        if (
+            "augmentation_function" in self.config.keys()
+            and self.config["augmentation_function"] is not None
+        ):
+            batch = self.config["augmentation_function"](batch, aug_rng)
+
+        batch = batch.copy(
+            add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]}
+        )
+
+        # ── Step 1: 逐样本计算 A_cf（与 update_with_correction 完全相同）────
+        rng, cf_rng = jax.random.split(rng)
+
+        if self.config["fix_gripper"]:
+            h_actions = matched_pref["human_actions"][..., :-1]
+            p_actions = matched_pref["policy_actions"][..., :-1]
+        else:
+            h_actions = matched_pref["human_actions"]
+            p_actions = matched_pref["policy_actions"]
+
+        q_human_ensemble = self.forward_target_critic(
+            matched_pref["observations"], h_actions, rng=cf_rng,
+        )
+        q_human_min = q_human_ensemble.min(axis=0)
+
+        q_policy_ensemble = self.forward_target_critic(
+            matched_pref["observations"], p_actions, rng=cf_rng,
+        )
+        q_policy_min = q_policy_ensemble.min(axis=0)
+
+        valid_mask = matched_pref["valid_mask"].astype(jnp.float32)
+        q_gap_raw = q_human_min - q_policy_min
+        A_cf_per_sample = jax.lax.stop_gradient(
+            valid_mask * jnp.maximum(0.0, q_gap_raw)
+        )
+
+        # ── Step 2: loss_fns，actor 改用 bc_policy_loss_fn ───────────────
+        def _corrected_critic(params, rng):
+            return self.corrected_critic_loss_fn(batch, A_cf_per_sample, params, rng)
+
+        def _bc_actor(params, rng):
+            if preference_batch_direct is None:
+                return self.policy_loss_fn(batch, params, rng)
+            return self.bc_policy_loss_fn(batch, preference_batch_direct, params, rng)
+
+        loss_fns = {
+            "critic":      _corrected_critic,
+            "actor":       _bc_actor,
+            "temperature": partial(self.temperature_loss_fn, batch),
+        }
+
+        assert networks_to_update.issubset(loss_fns.keys()), (
+            f"Invalid gradient steps: {networks_to_update}"
+        )
+        for key in loss_fns.keys() - networks_to_update:
+            loss_fns[key] = lambda params, rng: (0.0, {})
+
+        new_state, info = self.state.apply_loss_fns(
+            loss_fns, pmap_axis=pmap_axis, has_aux=True
+        )
+
+        if "critic" in networks_to_update:
+            new_state = new_state.target_update(self.config["soft_target_update_rate"])
+
+        new_state = new_state.replace(rng=rng)
+
+        for name, opt_state in new_state.opt_states.items():
+            if (
+                hasattr(opt_state, "hyperparams")
+                and "learning_rate" in opt_state.hyperparams.keys()
+            ):
+                info[f"{name}_lr"] = opt_state.hyperparams["learning_rate"]
+
+        pref_match_rate = jnp.mean(valid_mask)
+        q_gap_where_valid = jnp.sum(q_gap_raw * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+        info["pref_match_rate"] = pref_match_rate
+        info["q_human_mean"] = jnp.sum(q_human_min * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+        info["q_policy_mean"] = jnp.sum(q_policy_min * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
+        info["q_gap_where_valid"] = q_gap_where_valid
+        info["A_cf_mean"] = jnp.mean(A_cf_per_sample)
+
+        return self.replace(state=new_state), info
+
     def loss_fns(self, batch):
         # 如果 config 中启用了 cov_actor_loss，使用协方差熵截断 Actor Loss
         # 工厂函数由 train_rlpd.py 注入至 config["_cov_fn_factory"]，避免在包内 import examples 目录
