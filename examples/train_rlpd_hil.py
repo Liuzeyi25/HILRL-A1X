@@ -26,7 +26,7 @@ HIL-SERL 偏好引导强化学习训练脚本（Proposal 方法实现）
 
 import glob
 import json as _json
-import oss
+import os
 import pickle as pkl
 import time
 from functools import partial

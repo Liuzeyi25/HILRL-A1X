@@ -475,27 +475,22 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
         policy_dim = pref_distributions.distribution.loc.shape[-1]
         human_a = preference_batch["human_actions"][..., :policy_dim]
 
-        # ✅ 修复：使用 buffer 中记录的历史策略动作作为"被拒绝动作"，而非每步重采样。
+        # 使用 buffer 中记录的历史策略动作作为"被拒绝动作"
         policy_a_hist = preference_batch["policy_actions"][..., :policy_dim]
-        policy_a_hist = jax.lax.stop_gradient(policy_a_hist)
-
-        # 数值稳定性：避免 |a|=1 导致 tanh-squashed log_prob 极端值。
-        clip_eps = self.config.get("contrastive_action_clip_eps", 1e-6)
-        human_a       = jnp.clip(human_a,       -1.0 + clip_eps, 1.0 - clip_eps)
-        policy_a_hist = jnp.clip(policy_a_hist, -1.0 + clip_eps, 1.0 - clip_eps)
 
         pref_batch_size = preference_batch["human_actions"].shape[0]
-        # ✅ 除以 policy_dim 归一化：防止高维动作空间下 log_prob 绝对值过大导致 sigmoid 饱和
-        log_prob_human  = pref_distributions.log_prob(human_a)        / policy_dim  # (B,)
-        log_prob_policy = pref_distributions.log_prob(policy_a_hist)  / policy_dim  # (B,)
-        chex.assert_shape(log_prob_human,  (pref_batch_size,))
-        chex.assert_shape(log_prob_policy, (pref_batch_size,))
+        log_prob_human_raw  = pref_distributions.log_prob(human_a)        # (B,)
+        log_prob_policy_raw = pref_distributions.log_prob(policy_a_hist)  # (B,)
+        chex.assert_shape(log_prob_human_raw,  (pref_batch_size,))
+        chex.assert_shape(log_prob_policy_raw, (pref_batch_size,))
+
+        # 使用激活函数把 log_prob 压到 [-1, 1]，避免对比项量级远大于 RLPD actor loss。
+        log_prob_human = jnp.tanh(log_prob_human_raw)
+        log_prob_policy = jnp.tanh(log_prob_policy_raw)
 
         # Module 3 核心：BTL / logistic pairwise loss
         # preference_batch_direct 是独立采样的纯净 batch，每条均有效，直接取均值。
         log_prob_gap = log_prob_human - log_prob_policy                  # (B,)
-        # ✅ 硬裁剪：防止 gap 极端值导致 log_sigmoid 数值溢出
-        log_prob_gap = jnp.clip(log_prob_gap, -10.0, 10.0)
         contrastive_loss_per_sample = -jax.nn.log_sigmoid(log_prob_gap)  # (B,)
         contrastive_loss = jnp.mean(contrastive_loss_per_sample)
 
@@ -514,6 +509,8 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             "log_prob_human":  jnp.mean(log_prob_human),
             "log_prob_policy": jnp.mean(log_prob_policy),
             "log_prob_gap":    jnp.mean(log_prob_gap),
+            "log_prob_human_raw":  jnp.mean(log_prob_human_raw),
+            "log_prob_policy_raw": jnp.mean(log_prob_policy_raw),
             "pref_action_l2_mean": pref_action_l2_mean,
         }
         return total_actor_loss, info
