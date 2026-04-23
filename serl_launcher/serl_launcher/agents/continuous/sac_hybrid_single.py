@@ -693,8 +693,12 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
 
         pref_batch_size = preference_batch["human_actions"].shape[0]
         bc_loss_per_sample = jnp.mean((mu_theta - u_human) ** 2, axis=-1)  # (B,)
-        bc_loss = jnp.mean(bc_loss_per_sample)                              # scalar
         chex.assert_shape(bc_loss_per_sample, (pref_batch_size,))
+        # bc_weight 支持：若 preference_batch 中含 bc_weight，则加权平均；否则等权
+        if "bc_weight" in preference_batch:
+            bc_loss = jnp.mean(bc_loss_per_sample * preference_batch["bc_weight"])
+        else:
+            bc_loss = jnp.mean(bc_loss_per_sample)                          # scalar
 
         bc_coef = self.config.get("contrastive_coef", 0.1)
         total_actor_loss = rlpd_loss + bc_coef * bc_loss

@@ -72,9 +72,330 @@ from examples.train_rlpd_hil import (
 
 FLAGS = flags.FLAGS
 
+# bc_post_steps: 人类干预结束后，附加施加 BC loss 的步数（权重逐步衰减）
+# 为 0 时只对干预点本身（weight=1.0）施加 BC loss，与原来行为一致
+flags.DEFINE_integer(
+    "bc_post_steps", 0,
+    "干预结束后附加 BC loss 的步数 x。\n"
+    "权重公式：第 t 步（t=1..x）权重 = 1 - t/x，\n"
+    "如 x=5 对干预后 5 步施加 weight=(0.8, 0.6, 0.4, 0.2, 0.0)。",
+)
+
 devices = jax.local_devices()
 num_devices = len(devices)
 sharding = jax.sharding.PositionalSharding(devices)
+
+
+# =============================================================================
+# Actor 循环（BC 版）：在原有 actor 基础上增加干预后 x 步 BC 引导
+# =============================================================================
+
+def actor_bc(agent, data_store, intvn_data_store, preference_data_store, env, sampling_rng,
+             include_grasp_penalty: bool = False):
+    """
+    Actor 循环 BC 版。
+
+    在原有 actor() 逻辑基础上新增：
+      - 干预点本身的 preference_data_store.insert 添加 bc_weight=1.0
+      - 干预结束后的 bc_post_steps 步，依次以衰减权重插入 preference buffer
+    其余逻辑与 train_rlpd_hil.actor 完全相同。
+    """
+    import pickle as pkl
+
+    # ── 验证模式 ────────────────────────────────────────────────
+    if FLAGS.eval_checkpoint_step:
+        success_counter = 0
+        time_list = []
+        ckpt = checkpoints.restore_checkpoint(
+            os.path.abspath(FLAGS.checkpoint_path),
+            agent.state,
+            step=FLAGS.eval_checkpoint_step,
+        )
+        agent = agent.replace(state=ckpt)
+        for episode in range(FLAGS.eval_n_trajs):
+            obs, _ = env.reset()
+            done = False
+            start_time = time.time()
+            while not done:
+                sampling_rng, key = jax.random.split(sampling_rng)
+                actions = agent.sample_actions(
+                    observations=jax.device_put(obs), seed=key, argmax=True,
+                )
+                actions = np.asarray(jax.device_get(actions))
+                obs, reward, done, truncated, info = env.step(actions)
+                if done or truncated:
+                    success_counter += int(info.get("succeed", reward > 0))
+                    time_list.append(time.time() - start_time)
+                done = done or truncated
+        print(f"success rate: {success_counter / FLAGS.eval_n_trajs}")
+        print(f"average time: {np.mean(time_list)}")
+        return
+
+    # ── 断点续训起始步 ────────────────────────────────────────
+    start_step = (
+        int(os.path.basename(
+            natsorted(glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl")))[-1]
+        )[12:-4]) + 1
+        if FLAGS.checkpoint_path and os.path.exists(FLAGS.checkpoint_path)
+           and glob.glob(os.path.join(FLAGS.checkpoint_path, "buffer/*.pkl"))
+        else 0
+    )
+
+    # ── 注册数据存储 ────────────────────────────────────────
+    datastore_dict = {
+        "actor_env":       data_store,
+        "actor_env_intvn": intvn_data_store,
+        "actor_env_pref":  preference_data_store,
+    }
+    client = TrainerClient(
+        "actor_env",
+        FLAGS.ip,
+        make_trainer_config(),
+        data_stores=datastore_dict,
+        wait_for_server=True,
+        timeout_ms=3000,
+    )
+
+    def update_params(params):
+        nonlocal agent
+        agent = agent.replace(state=agent.state.replace(params=params))
+
+    client.recv_network_callback(update_params)
+
+    # ── [Module 1] 加载 Progress Model Runner ────────────────────
+    progress_runner = None
+    if FLAGS.progress_model_path and FLAGS.state_stats_path:
+        from progress_model_inference import ProgressModelRunner
+        progress_runner = ProgressModelRunner(
+            model_path=FLAGS.progress_model_path,
+            stats_path=FLAGS.state_stats_path,
+            side_key=FLAGS.progress_side_key,
+            wrist_key=FLAGS.progress_wrist_key,
+            hidden_dim=FLAGS.progress_hidden_dim,
+            device=FLAGS.progress_device,
+        )
+        print_green(f"[Module 1] Progress Model 已加载: {FLAGS.progress_model_path}")
+    else:
+        print_green(
+            f"[Module 1] 未提供 --progress_model_path，"
+            f"使用 fallback（向前 {FLAGS.suboptimal_window} 步）"
+        )
+
+    # ── Episode 级缓存 ────────────────────────────────────────
+    transitions:           List[Dict] = []
+    demo_transitions:      List[Dict] = []
+    episode_buffer:        List[Dict] = []
+    intervention_markers:  List[Dict] = []
+    next_segment_uid = 0
+
+    # ── [BC post-steps] 状态跟踪 ───────────────────────────
+    bc_post_counter     = 0       # 剩余干预后步数
+    bc_post_last_human  = None    # 最近一次干预的最后人类动作
+    bc_post_segment_id  = None    # 对应的 segment_id
+
+    obs, _ = env.reset()
+    done = False
+
+    timer = Timer()
+    running_return = 0.0
+    already_intervened = False
+    intervention_count = 0
+    intervention_steps = 0
+
+    pbar = tqdm.tqdm(range(start_step, config.max_steps), dynamic_ncols=True)
+    for step in pbar:
+        timer.tick("total")
+
+        # ── 采样动作 ───────────────────────────────────────
+        with timer.context("sample_actions"):
+            if step < config.random_steps:
+                actions = env.action_space.sample()
+            else:
+                sampling_rng, key = jax.random.split(sampling_rng)
+                actions = agent.sample_actions(
+                    observations=jax.device_put(obs),
+                    seed=key,
+                    argmax=False,
+                )
+                actions = np.asarray(jax.device_get(actions))
+
+        # ── 环境交互 ─────────────────────────────────────────
+        with timer.context("step_env"):
+            policy_action_saved = actions.copy()
+            next_obs, reward, done, truncated, info = env.step(actions)
+            if "left" in info:
+                info.pop("left")
+            if "right" in info:
+                info.pop("right")
+
+            prev_was_intervened = already_intervened
+
+            if "intervene_action_eef" in info:
+                human_action = info.pop("intervene_action_eef")
+                intervention_steps += 1
+
+                if not already_intervened:
+                    intervention_count += 1
+                    t_i = len(episode_buffer)
+                    intervention_markers.append({
+                        "step_idx":      t_i,
+                        "segment_id":    next_segment_uid,
+                        "obs":           obs,
+                        "human_action":  human_action,
+                        "policy_action": policy_action_saved,
+                    })
+                    # 干预点 weight=1.0
+                    preference_data_store.insert({
+                        "observations":   obs,
+                        "human_actions":  human_action,
+                        "policy_actions": policy_action_saved,
+                        "segment_ids":    np.int32(next_segment_uid),
+                        "bc_weight":      np.float32(1.0),
+                    })
+                    next_segment_uid += 1
+
+                already_intervened = True
+                actions = human_action
+                # [BC post-steps] 记录当前干预的最新人类动作
+                bc_post_last_human = human_action
+                bc_post_segment_id = next_segment_uid - 1
+            else:
+                # [BC post-steps] 干预刺刺结束→重置计数器
+                if prev_was_intervened and not already_intervened:
+                    bc_post_counter = FLAGS.bc_post_steps
+
+                already_intervened = False
+                _scale = np.asarray(config.action_scale) if hasattr(config, "action_scale") else None
+                if _scale is not None and _scale.ndim > 0:
+                    _zero_mask = (_scale == 0)
+                    if _zero_mask.any():
+                        actions = actions.copy()
+                        actions[:len(_zero_mask)][_zero_mask[:len(actions)]] = 0.0
+
+                # [BC post-steps] 干预后 x 步，以逐步衰减权重将当前状态写入 preference buffer
+                if bc_post_counter > 0 and bc_post_last_human is not None:
+                    t_since = FLAGS.bc_post_steps - bc_post_counter + 1  # 1, 2, ..., x
+                    weight = np.float32(1.0 - t_since / FLAGS.bc_post_steps)
+                    if weight > 0:  # 最后一步 weight=0 无意义，跳过
+                        preference_data_store.insert({
+                            "observations":   obs,
+                            "human_actions":  bc_post_last_human,
+                            "policy_actions": policy_action_saved,
+                            "segment_ids":    np.int32(bc_post_segment_id),
+                            "bc_weight":      weight,
+                        })
+                    bc_post_counter -= 1
+
+            running_return += reward
+
+            transition = dict(
+                observations=obs,
+                actions=actions,
+                next_observations=next_obs,
+                rewards=reward,
+                masks=1.0 - done,
+                dones=done,
+                alpha_weight=0.0,
+                segment_ids=-1,
+                _was_intervened=already_intervened,
+            )
+            if include_grasp_penalty and "grasp_penalty" in info:
+                transition["grasp_penalty"] = info["grasp_penalty"]
+
+            episode_buffer.append(transition)
+
+            if already_intervened:
+                intvn_tr = {k: v for k, v in transition.items()
+                            if not k.startswith("_")}
+                intvn_data_store.insert(intvn_tr)
+                demo_transitions.append(intvn_tr)
+
+            obs = next_obs
+
+            if done or truncated:
+                suboptimal_segs = detect_suboptimal_segments(
+                    episode_buffer,
+                    intervention_markers,
+                    window=FLAGS.suboptimal_window,
+                    progress_runner=progress_runner,
+                    anomaly_window=FLAGS.anomaly_window,
+                    delta_reg=FLAGS.delta_reg,
+                    delta_stag=FLAGS.delta_stag,
+                    detect_regression=FLAGS.detect_regression,
+                    detect_stagnation=FLAGS.detect_stagnation,
+                    recovery_k=FLAGS.recovery_k,
+                )
+
+                segment_uids = [m["segment_id"] for m in intervention_markers]
+                alpha_weights, segment_ids = compute_episode_alpha_and_segment_ids(
+                    len(episode_buffer), suboptimal_segs, segment_uids, FLAGS.alpha_lambda
+                )
+
+                for i, tr in enumerate(episode_buffer):
+                    tr_to_insert = {k: v for k, v in tr.items()
+                                    if not k.startswith("_")}
+                    tr_to_insert["alpha_weight"] = float(alpha_weights[i])
+                    tr_to_insert["segment_ids"] = int(segment_ids[i])
+                    data_store.insert(tr_to_insert)
+                    transitions.append(tr_to_insert)
+
+                episode_len = len(episode_buffer)
+                episode_return = running_return
+                succeed = bool(info.get("succeed", reward > 0))
+
+                ep_stats = {
+                    "episode/return":            episode_return,
+                    "episode/length":            episode_len,
+                    "episode/success":           float(succeed),
+                    "episode/intervention_rate": intervention_steps / max(episode_len, 1),
+                    "episode/intervention_count": intervention_count,
+                    "episode/n_suboptimal_segs":  len(suboptimal_segs),
+                    "episode/suboptimal_ratio":   float(
+                        np.sum(alpha_weights > 0) / max(episode_len, 1)
+                    ),
+                    "episode/mean_alpha":          float(alpha_weights[alpha_weights > 0].mean())
+                                                   if np.any(alpha_weights > 0) else 0.0,
+                    "episode/avg_intervention_len": intervention_steps / max(intervention_count, 1),
+                }
+                info["episode"].update(ep_stats)
+                stats = {"environment": info}
+                client.request("send-stats", stats)
+
+                pbar.set_description(f"last return: {running_return:.2f}")
+                running_return = 0.0
+                intervention_count = 0
+                intervention_steps = 0
+                already_intervened = False
+                # [BC post-steps] episode 结束时清空 post-step 状态
+                bc_post_counter    = 0
+                bc_post_last_human = None
+                bc_post_segment_id = None
+                episode_buffer = []
+                intervention_markers = []
+
+                client.update()
+
+                if config.buffer_period > 0 and FLAGS.checkpoint_path:
+                    buffer_path      = os.path.join(FLAGS.checkpoint_path, "buffer")
+                    demo_buffer_path = os.path.join(FLAGS.checkpoint_path, "demo_buffer")
+                    os.makedirs(buffer_path,      exist_ok=True)
+                    os.makedirs(demo_buffer_path, exist_ok=True)
+                    if transitions:
+                        with open(os.path.join(buffer_path, f"transitions_{step}.pkl"), "wb") as f:
+                            pkl.dump(transitions, f)
+                        transitions = []
+                    if demo_transitions:
+                        with open(os.path.join(demo_buffer_path, f"transitions_{step}.pkl"), "wb") as f:
+                            pkl.dump(demo_transitions, f)
+                        demo_transitions = []
+
+                obs, _ = env.reset()
+
+        timer.tock("total")
+
+        if step % config.log_period == 0:
+            stats = {"timer": timer.get_average_times()}
+            client.request("send-stats", stats)
 
 
 # =============================================================================
@@ -427,6 +748,7 @@ def main(_):
             [
                 f"alpha_lambda         = {FLAGS.alpha_lambda}",
                 f"bc_coef (β)          = {FLAGS.contrastive_coef}  (复用 contrastive_coef flag)",
+                f"bc_post_steps        = {FLAGS.bc_post_steps}  (干预后附加 BC 引导的步数)",
                 f"preference_batch     = {FLAGS.preference_batch_size}",
                 f"suboptimal_window    = {FLAGS.suboptimal_window}",
                 f"progress_model       = {FLAGS.progress_model_path or 'fallback'}",
@@ -452,8 +774,8 @@ def main(_):
         intvn_data_store      = QueuedDataStore(20000)
         preference_data_store = QueuedDataStore(10000)
 
-        print_green("starting actor loop")
-        actor(
+        print_green("starting actor_bc loop")
+        actor_bc(
             agent,
             data_store,
             intvn_data_store,
