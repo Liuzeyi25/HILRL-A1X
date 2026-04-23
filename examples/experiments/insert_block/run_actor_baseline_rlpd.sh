@@ -13,6 +13,6 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=.2
 
 python ../../train_rlpd.py "$@" \
     --exp_name=insert_block \
-    --checkpoint_path=experiments/insert_block/hilserl${RUN_TAG} \
+    --checkpoint_path=experiments/insert_block/hilserl/${RUN_TAG} \
     --actor \
     --run_tag="${RUN_TAG}"
