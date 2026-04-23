@@ -3,8 +3,6 @@
 import glob
 import time
 import jax
-import logging
-logging.getLogger("curobo").setLevel(logging.WARNING)
 
 import jax.numpy as jnp
 import numpy as np
@@ -73,26 +71,6 @@ sharding = jax.sharding.PositionalSharding(devices)
 
 def print_green(x):
     return print("\033[92m {}\033[00m".format(x))
-
-
-def print_banner(title: str, lines: list, color: str = "yellow") -> None:
-    """打印带边框的醒目横幅，用于确认关键配置已生效。
-
-    color: yellow | green | cyan | red
-    """
-    _codes = {"yellow": "\033[93m", "green": "\033[92m",
-               "cyan": "\033[96m", "red": "\033[91m"}
-    bold  = "\033[1m"
-    reset = "\033[00m"
-    c     = _codes.get(color, _codes["yellow"])
-    width = max(len(title), max((len(l) for l in lines), default=0)) + 4
-    border = "═" * width
-    print(f"\n{c}{bold}╔{border}╗")
-    print(f"║  {title:^{width - 2}}  ║")
-    print(f"╠{border}╣")
-    for line in lines:
-        print(f"║  {line:<{width - 2}}  ║")
-    print(f"╚{border}╝{reset}\n")
 
 
 ##############################################################################
@@ -564,7 +542,6 @@ def main(_):
             capacity=config.replay_buffer_capacity,
             image_keys=config.image_keys,
             include_grasp_penalty=include_grasp_penalty,
-            include_label=True,
         )
         # set up wandb and logging
         _wandb_desc = (

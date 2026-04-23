@@ -1,4 +1,4 @@
-RUN_TAG=${RUN_TAG:-"0422_3"}
+RUN_TAG=${RUN_TAG:-"0422_4_bc"}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5
@@ -9,7 +9,7 @@ export WANDB_MODE=online
 export WANDB_ENTITY=liuzeyicsu-central-south-university
 
 # 有 Progress Model 时：
-python ../../train_rlpd_hil.py \
+python ../../train_rlpd_hil_bc.py \
     --exp_name=insert_block \
     --checkpoint_path=experiments/insert_block/checkpoints_hil/${RUN_TAG} \
     --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/demo_data/20260418/merged_demo_data.pkl \

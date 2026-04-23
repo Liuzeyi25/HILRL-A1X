@@ -59,6 +59,7 @@ from serl_launcher.data.data_store import (
 )
 
 from experiments.mappings import CONFIG_MAPPING
+import examples.train_rlpd_hil as train_rlpd_hil_base
 
 # 复用 train_rlpd_hil.py 的所有辅助函数（不重复实现）
 from examples.train_rlpd_hil import (
@@ -275,6 +276,9 @@ def learner_bc(
 def main(_):
     global config
     config = CONFIG_MAPPING[FLAGS.exp_name]()
+    # actor() 复用自 examples.train_rlpd_hil，该函数内部读取其模块级全局 config。
+    # 这里同步一次，避免 BC 脚本中出现 NameError: name 'config' is not defined。
+    train_rlpd_hil_base.config = config
 
     assert config.batch_size % num_devices == 0
 
@@ -384,6 +388,10 @@ def main(_):
                 import pickle
                 demo_data = pickle.load(f)
                 for transition in demo_data:
+                    if "infos" in transition and "grasp_penalty" in transition["infos"]:
+                        transition["grasp_penalty"] = transition["infos"]["grasp_penalty"]
+                    transition.setdefault("alpha_weight", 0.0)
+                    transition.setdefault("segment_ids", -1)
                     demo_buffer.insert(transition)
         print_green(f"demo buffer size: {len(demo_buffer)}")
         print_green(f"online buffer size: {len(replay_buffer)}")
@@ -395,6 +403,8 @@ def main(_):
                 with open(file, "rb") as f:
                     import pickle
                     for transition in pickle.load(f):
+                        transition.setdefault("alpha_weight", 0.0)
+                        transition.setdefault("segment_ids", -1)
                         replay_buffer.insert(transition)
             print_green(f"Loaded previous buffer. Replay buffer size: {len(replay_buffer)}")
 
@@ -407,6 +417,8 @@ def main(_):
                 with open(file, "rb") as f:
                     import pickle
                     for transition in pickle.load(f):
+                        transition.setdefault("alpha_weight", 0.0)
+                        transition.setdefault("segment_ids", -1)
                         demo_buffer.insert(transition)
             print_green(f"Loaded previous demo buffer. Demo buffer size: {len(demo_buffer)}")
 

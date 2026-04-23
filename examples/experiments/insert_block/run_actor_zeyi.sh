@@ -1,10 +1,10 @@
-RUN_TAG=${RUN_TAG:-"0422_3"}
+RUN_TAG=${RUN_TAG:-"0422_4_bc"}
 
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.2
 
-python ../../train_rlpd_hil.py \
+python ../../train_rlpd_hil_bc.py \
     --exp_name=insert_block \
     --checkpoint_path=experiments/insert_block/checkpoints_hil/${RUN_TAG} \
     --actor\
