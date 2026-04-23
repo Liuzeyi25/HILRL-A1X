@@ -536,10 +536,10 @@ class SACAgent(flax.struct.PyTreeNode):
         )  # (ensemble_size, B)
         q_policy_min = q_policy_ensemble.min(axis=0)  # (B,)
 
-        # 逐样本 A_cf：仅在 valid_mask=True 且 Q_human > Q_policy 时才有修正量
+        # 逐样本 A_cf：仅在 valid_mask=True 且 Q_policy > Q_human 时才有修正量
         # stop_gradient：A_cf 是外部信号，不允许梯度通过它传回 Q 网络
         valid_mask = matched_pref["valid_mask"].astype(jnp.float32)  # (B,)
-        q_gap_raw = q_human_min - q_policy_min                           # (B,)
+        q_gap_raw = q_policy_min  - q_human_min                            # (B,)
         A_cf_per_sample = jax.lax.stop_gradient(
             valid_mask * jnp.maximum(0.0, q_gap_raw)                     # (B,)
         )
@@ -588,8 +588,8 @@ class SACAgent(flax.struct.PyTreeNode):
         #           若持续 <10% 可增大 preference buffer 容量或增大 suboptimal_window
         pref_match_rate = jnp.mean(valid_mask)
 
-        # [指标6] q_gap_where_valid：有效匹配位置的 Q_human - Q_policy 均值
-        #   健康值：应 > 0，说明人类动作确实被 Q 值评估为更好；
+        # [指标6] q_gap_where_valid：有效匹配位置的 Q_policy - Q_human 均值
+        #   健康值：应 > 0，说明策略动作被 Q 值高估、需要修正；
         #           若接近 0 说明 Q 网络还未收敛到能区分好坏动作（正常，训练初期如此）
         q_gap_where_valid = jnp.sum(q_gap_raw * valid_mask) / (jnp.sum(valid_mask) + 1e-8)
 
@@ -740,7 +740,7 @@ class SACAgent(flax.struct.PyTreeNode):
         q_policy_min = q_policy_ensemble.min(axis=0)
 
         valid_mask = matched_pref["valid_mask"].astype(jnp.float32)
-        q_gap_raw = q_human_min - q_policy_min
+        q_gap_raw = q_policy_min - q_human_min
         A_cf_per_sample = jax.lax.stop_gradient(
             valid_mask * jnp.maximum(0.0, q_gap_raw)
         )

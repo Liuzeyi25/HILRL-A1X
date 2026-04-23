@@ -350,7 +350,7 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
             ỹ_t = y_t - α(t) · A_cf
 
         - α(t) = batch["alpha_weight"]，actor 端预计算
-        - A_cf = max(0, mean[Q_tgt(s,a^h) - Q_tgt(s,a^π)])，外部 stop-gradient 传入
+        - A_cf = max(0, mean[Q_tgt(s,a^π) - Q_tgt(s,a^h)])，外部 stop-gradient 传入
 
         该 agent 无 fix_gripper 配置，连续动作始终取 actions[..., :-1]。
         """
@@ -391,7 +391,7 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
         # 数学形式：y_tilde_t = y_t - alpha(t) * A_cf
         #   y_t       : 标准 Bellman 目标（温度修正后）
         #   alpha(t)  : 位置感知权重，次优片段 [t_a, t_i] 内 = exp(-lam*(t_i-t))，其余 = 0
-        #   A_cf      : 反事实优势 = max(0, mean_batch[Q(s,a^h) - Q(s,a^pi)])
+        #   A_cf      : 反事实优势 = max(0, mean_batch[Q(s,a^pi) - Q(s,a^h)])
         # 作用：将次优片段内的 Q 目标值向下偏移，促使 Critic 学会"次优状态价值较低"
         alpha_weights = batch["alpha_weight"]   # (batch_size,)
         chex.assert_shape(alpha_weights, (batch_size,))
@@ -574,8 +574,8 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
         )
         q_policy_min = q_policy_ensemble.min(axis=0)            # (B,)
 
-        # 逐样本 A_cf：只对 valid_mask=True 的位置计算，其余置 0
-        q_gap_raw = q_human_min - q_policy_min                  # (B,)
+        # 逐样本 A_cf：只对 valid_mask=True 且 Q_policy > Q_human 的位置计算，其余置 0
+        q_gap_raw = q_policy_min - q_human_min                  # (B,)
         A_cf_batch_raw = jnp.where(
             valid_mask_np,
             jnp.maximum(0.0, q_gap_raw),
@@ -765,7 +765,7 @@ class SACAgentHybridSingleArm(flax.struct.PyTreeNode):
         )
         q_policy_min = q_policy_ensemble.min(axis=0)
 
-        q_gap_raw = q_human_min - q_policy_min
+        q_gap_raw = q_policy_min - q_human_min
         A_cf_batch_raw = jnp.where(
             valid_mask_np,
             jnp.maximum(0.0, q_gap_raw),

@@ -162,7 +162,7 @@ class PreferenceBufferDataStore(DataStoreBase):
             - segment_ids:    当前干预事件对应的次优片段 ID（全局唯一）
 
     Module 2 同时使用该缓冲区：通过 target network 前向推断计算反事实优势
-        A_cf = max(0, mean_batch[Q_tgt(s, a^h) - Q_tgt(s, a^π)])
+        A_cf = max(0, mean_batch[Q_tgt(s, a^π) - Q_tgt(s, a^h)])
 
     线程安全：actor 写入（TrainerClient），learner 读取（TrainerServer），Lock 保护。
     """

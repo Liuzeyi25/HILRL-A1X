@@ -65,7 +65,6 @@ import examples.train_rlpd_hil as train_rlpd_hil_base
 from examples.train_rlpd_hil import (
     detect_suboptimal_segments,
     compute_episode_alpha_and_segment_ids,
-    actor,
     print_green,
     print_banner,
 )
@@ -261,7 +260,7 @@ def actor_bc(agent, data_store, intvn_data_store, preference_data_store, env, sa
                 bc_post_segment_id = next_segment_uid - 1
             else:
                 # [BC post-steps] 干预刺刺结束→重置计数器
-                if prev_was_intervened and not already_intervened:
+                if prev_was_intervened:
                     bc_post_counter = FLAGS.bc_post_steps
 
                 already_intervened = False
