@@ -5,7 +5,7 @@
 #   bash run_actor_baseline_rlpd.sh
 #   RUN_TAG=0423_baseline_1 bash run_actor_baseline_rlpd.sh
 
-RUN_TAG=${RUN_TAG:-"0423_baseline_1"}
+RUN_TAG=${RUN_TAG:-"0424_baseline_1"}
 
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 export XLA_PYTHON_CLIENT_PREALLOCATE=false

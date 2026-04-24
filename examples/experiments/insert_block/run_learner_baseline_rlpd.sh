@@ -5,7 +5,7 @@
 #   bash run_learner_baseline_rlpd.sh
 #   RUN_TAG=0423_baseline_1 bash run_learner_baseline_rlpd.sh
 
-RUN_TAG=${RUN_TAG:-"0423_baseline_1"}
+RUN_TAG=${RUN_TAG:-"0424_baseline_1"}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5

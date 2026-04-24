@@ -160,6 +160,7 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
     already_intervened = False
     intervention_count = 0
     intervention_steps = 0
+    episode_steps = 0
 
     pbar = tqdm.tqdm(range(start_step, config.max_steps), dynamic_ncols=True)
     for step in pbar:
@@ -205,6 +206,7 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
                         actions[:len(_zero_mask)][_zero_mask[:len(actions)]] = 0.0
 
             running_return += reward
+            episode_steps += 1
             transition = dict(
                 observations=obs,
                 actions=actions,
@@ -212,6 +214,7 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
                 rewards=reward,
                 masks=1.0 - done,
                 dones=done,
+                label=2 if already_intervened else 1,
             )
             if 'grasp_penalty' in info:
                 transition['grasp_penalty']= info['grasp_penalty']
@@ -231,15 +234,20 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
             #     )
             obs = next_obs
             if done or truncated:
+                trajectory_length = episode_steps
+                human_intervention_ratio = intervention_steps / max(trajectory_length, 1)
                 info["episode"]["intervention_count"] = intervention_count
                 info["episode"]["intervention_steps"] = intervention_steps
-                info["episode"]["intervention_rate"] = intervention_steps / (len(transitions) - 1e-8)
+                info["episode"]["intervention_rate"] = human_intervention_ratio
+                info["episode"]["human_intervention_step_ratio"] = human_intervention_ratio
+                info["episode"]["trajectory_length"] = trajectory_length
                 stats = {"environment": info}  # send stats to the learner to log
                 client.request("send-stats", stats)
                 pbar.set_description(f"last return: {running_return}")
                 running_return = 0.0
                 intervention_count = 0
                 intervention_steps = 0
+                episode_steps = 0
                 already_intervened = False
                 client.update()
 

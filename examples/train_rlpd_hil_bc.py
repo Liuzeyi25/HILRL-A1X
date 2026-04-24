@@ -294,6 +294,7 @@ def actor_bc(agent, data_store, intvn_data_store, preference_data_store, env, sa
                 rewards=reward,
                 masks=1.0 - done,
                 dones=done,
+                label=2 if already_intervened else 1,
                 alpha_weight=0.0,
                 segment_ids=-1,
                 _was_intervened=already_intervened,

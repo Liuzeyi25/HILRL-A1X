@@ -1,4 +1,4 @@
-RUN_TAG=${RUN_TAG:-"0423_1_multi-bc"}
+RUN_TAG=${RUN_TAG:-"0423_3_multi-bc"}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5
@@ -16,8 +16,8 @@ python ../../train_rlpd_hil_bc.py \
     --learner \
     --run_tag="${RUN_TAG}" \
     --alpha_lambda=3.0 \
-    --contrastive_coef=0.2 \
-    --preference_batch_size=3 \
+    --contrastive_coef=1 \
+    --preference_batch_size=4 \
     --suboptimal_window=5 \
     --progress_model_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/progress_model/exp_003_20260421_1242//progress_model_best.pt \
     --state_stats_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/insert_block/progress_model/exp_003_20260421_1242/state_stats.pt \

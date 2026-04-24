@@ -47,10 +47,12 @@ import argparse
 import glob
 import os
 import pickle as pkl
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import imageio.v2 as imageio
 import jax
 import jax.numpy as jnp
 import matplotlib
@@ -128,11 +130,8 @@ def load_agent_from_checkpoint(checkpoint_path: str, config,
     setup_mode = config.setup_mode
     image_keys = list(config.image_keys)
 
-    # 查找 checkpoint 内部的参数文件
-    # 通常 checkpoint 结构为：checkpoint_STEP/ 下有 checkpoint 文件夹或直接是参数
-    ckpt_dir = os.path.abspath(checkpoint_path)
-
-    print(f"  从 {ckpt_dir} 加载 checkpoint...")
+    resolved_root, resolved_step = resolve_checkpoint_path(checkpoint_path)
+    print(f"  Loading checkpoint from root={resolved_root}, step={resolved_step}")
 
     if setup_mode in ("single-arm-fixed-gripper", "dual-arm-fixed-gripper"):
         agent = make_sac_pixel_agent(
@@ -155,16 +154,102 @@ def load_agent_from_checkpoint(checkpoint_path: str, config,
     else:
         raise NotImplementedError(f"setup_mode={setup_mode} 不支持")
 
-    # 尝试加载 checkpoint
+    # 尝试加载 checkpoint（显式 step，避免路径歧义导致静默回退到随机初始化）
     try:
-        ckpt_state = checkpoints.restore_checkpoint(ckpt_dir, agent.state)
+        ckpt_state = checkpoints.restore_checkpoint(resolved_root, agent.state, step=resolved_step)
+
+        if not _is_checkpoint_state_loaded(agent.state, ckpt_state):
+            raise RuntimeError(
+                f"Checkpoint appears not loaded (state unchanged). root={resolved_root}, step={resolved_step}"
+            )
+
         agent = agent.replace(state=ckpt_state)
-        print(f"  ✓ 成功加载 checkpoint")
+        print(f"  ✓ Loaded checkpoint step={resolved_step}")
     except Exception as e:
-        print(f"  ✗ 加载 checkpoint 失败: {e}")
+        print(f"  ✗ Failed to load checkpoint: {e}")
         raise
 
     return agent
+
+
+def resolve_checkpoint_path(checkpoint_path: str) -> Tuple[str, int]:
+    """
+    Resolve user checkpoint path into (checkpoint_root_dir, step).
+
+    Supports:
+      1) /path/to/run_dir                -> latest step in run_dir
+      2) /path/to/run_dir/checkpoint_8000 -> root=/path/to/run_dir, step=8000
+    """
+    abs_path = os.path.abspath(checkpoint_path)
+    base = os.path.basename(abs_path)
+    m = re.fullmatch(r"checkpoint_(\d+)", base)
+
+    if m is not None:
+        step = int(m.group(1))
+        root = os.path.dirname(abs_path)
+        if not os.path.exists(os.path.join(root, base)):
+            raise FileNotFoundError(f"Checkpoint path does not exist: {abs_path}")
+        return root, step
+
+    if not os.path.isdir(abs_path):
+        raise FileNotFoundError(f"Checkpoint directory not found: {abs_path}")
+
+    latest = checkpoints.latest_checkpoint(abs_path)
+    if latest is None:
+        raise FileNotFoundError(f"No checkpoint_* found under: {abs_path}")
+
+    latest_base = os.path.basename(latest)
+    m_latest = re.fullmatch(r"checkpoint_(\d+)", latest_base)
+    if m_latest is None:
+        raise RuntimeError(f"Unexpected latest checkpoint name: {latest}")
+
+    return abs_path, int(m_latest.group(1))
+
+
+def _is_checkpoint_state_loaded(init_state, loaded_state) -> bool:
+    """
+    Heuristic check: at least one actor parameter array differs.
+    Prevents silent fallback where restore_checkpoint returns target unchanged.
+    """
+    try:
+        init_actor = init_state.params["modules_actor"]
+        load_actor = loaded_state.params["modules_actor"]
+        init_leaves = jax.tree_util.tree_leaves(init_actor)
+        load_leaves = jax.tree_util.tree_leaves(load_actor)
+        if len(init_leaves) != len(load_leaves) or len(init_leaves) == 0:
+            return False
+        for a, b in zip(init_leaves, load_leaves):
+            if not np.array_equal(np.asarray(a), np.asarray(b)):
+                return True
+        return False
+    except Exception:
+        return True
+
+
+def build_unique_model_name(model_path: str, used_names: set) -> str:
+    """
+    Build a unique model display name from path to avoid collisions.
+
+    Example:
+      .../hilserl/0423_baseline_1/checkpoint_6000
+      -> hilserl/0423_baseline_1/checkpoint_6000
+    """
+    path_obj = Path(model_path)
+    base = path_obj.name
+    parent = path_obj.parent.name
+    grandparent = path_obj.parent.parent.name if path_obj.parent.parent else "root"
+    candidate = f"{grandparent}/{parent}/{base}"
+
+    if candidate not in used_names:
+        used_names.add(candidate)
+        return candidate
+
+    i = 2
+    while f"{candidate}#{i}" in used_names:
+        i += 1
+    unique_name = f"{candidate}#{i}"
+    used_names.add(unique_name)
+    return unique_name
 
 
 def build_obs_batch(transitions: List[Dict], image_keys: List[str]) -> Dict:
@@ -250,6 +335,190 @@ def compute_discounted_returns(rewards: np.ndarray,
     return returns
 
 
+def _to_uint8_image(img: np.ndarray) -> np.ndarray:
+    """Normalize image to uint8 HWC for display."""
+    img = np.asarray(img)
+    if img.ndim == 4 and img.shape[0] <= 10:
+        img = img[-1]
+
+    if img.ndim == 2:
+        img = np.stack([img, img, img], axis=-1)
+
+    if img.ndim == 3 and img.shape[-1] == 1:
+        img = np.repeat(img, 3, axis=-1)
+
+    if img.ndim != 3 or img.shape[-1] != 3:
+        raise ValueError(f"Unsupported image shape: {img.shape}")
+
+    if img.dtype != np.uint8:
+        if img.max() <= 1.0:
+            img = (img * 255.0).clip(0, 255).astype(np.uint8)
+        else:
+            img = img.clip(0, 255).astype(np.uint8)
+    return img
+
+
+def resolve_camera_keys(first_obs: Dict, config_image_keys: List[str]) -> Tuple[str, str]:
+    """Pick wrist and third-person camera keys from observation dict."""
+    keys = list(first_obs.keys())
+
+    wrist_candidates = [k for k in keys if "wrist" in k.lower()]
+    third_candidates = [k for k in keys if any(tag in k.lower() for tag in ["side", "third", "agent", "front", "policy"])]
+
+    if not wrist_candidates:
+        wrist_candidates = [k for k in config_image_keys if k in keys and "wrist" in k.lower()]
+    if not third_candidates:
+        third_candidates = [k for k in config_image_keys if k in keys and k not in wrist_candidates]
+
+    if not wrist_candidates:
+        wrist_candidates = [k for k in keys if np.asarray(first_obs[k]).ndim >= 3]
+    if not third_candidates:
+        third_candidates = [k for k in keys if np.asarray(first_obs[k]).ndim >= 3 and k not in wrist_candidates]
+
+    if not wrist_candidates or not third_candidates:
+        raise ValueError(f"Cannot resolve two camera keys from observation keys: {keys}")
+
+    return wrist_candidates[0], third_candidates[0]
+
+
+def extract_intervention_flags(trajectory: List[Dict]) -> np.ndarray:
+    """Best-effort extraction of human intervention flags from trajectory."""
+    flags = []
+    for tr in trajectory:
+        intervened = False
+
+        if "labels" in tr:
+            try:
+                intervened = int(tr["labels"]) == 2
+            except Exception:
+                intervened = False
+
+        for k in ["is_intervention", "intervened", "human_intervened", "gello_intervened"]:
+            if k in tr:
+                intervened = intervened or bool(tr[k])
+
+        infos = tr.get("infos", {}) if isinstance(tr.get("infos", {}), dict) else {}
+        for k in ["gello_intervened", "human_intervened"]:
+            if k in infos:
+                intervened = intervened or bool(infos[k])
+
+        flags.append(intervened)
+
+    return np.asarray(flags, dtype=bool)
+
+
+def extract_suboptimal_flags(trajectory: List[Dict]) -> np.ndarray:
+    """Use alpha_weight > 0 as suboptimal marker when available."""
+    flags = []
+    for tr in trajectory:
+        alpha = tr.get("alpha_weight", 0.0)
+        try:
+            flags.append(float(alpha) > 1e-8)
+        except Exception:
+            flags.append(False)
+    return np.asarray(flags, dtype=bool)
+
+
+def make_overlay_video(
+    trajectory: List[Dict],
+    wrist_key: str,
+    third_key: str,
+    q_a: np.ndarray,
+    q_b: np.ndarray,
+    returns: np.ndarray,
+    model_name_a: str,
+    model_name_b: str,
+    suboptimal_flags: np.ndarray,
+    intervention_flags: np.ndarray,
+    output_video_path: str,
+    fps: int,
+):
+    """Render one mp4 with two cameras + status + Q/return plot."""
+    T = len(trajectory)
+    if T == 0:
+        raise ValueError("Empty trajectory, cannot render video")
+
+    fig = plt.figure(figsize=(14, 8), dpi=100)
+    gs = fig.add_gridspec(2, 2, height_ratios=[2.2, 1.3])
+
+    ax_wrist = fig.add_subplot(gs[0, 0])
+    ax_third = fig.add_subplot(gs[0, 1])
+    ax_curve = fig.add_subplot(gs[1, :])
+
+    t_axis = np.arange(T)
+    y_all = np.concatenate([q_a, q_b, returns], axis=0)
+    y_min = float(np.nanmin(y_all))
+    y_max = float(np.nanmax(y_all))
+    if abs(y_max - y_min) < 1e-6:
+        y_min -= 1.0
+        y_max += 1.0
+
+    with imageio.get_writer(output_video_path, fps=fps, codec="libx264", quality=8) as writer:
+        for t in range(T):
+            obs = trajectory[t]["observations"]
+            wrist_img = _to_uint8_image(obs[wrist_key])
+            third_img = _to_uint8_image(obs[third_key])
+
+            ax_wrist.clear()
+            ax_third.clear()
+            ax_curve.clear()
+
+            ax_wrist.imshow(wrist_img)
+            ax_wrist.set_title(f"Wrist Camera ({wrist_key})")
+            ax_wrist.axis("off")
+
+            ax_third.imshow(third_img)
+            ax_third.set_title(f"Third-person Camera ({third_key})")
+            ax_third.axis("off")
+
+            status_items = []
+            if suboptimal_flags[t]:
+                status_items.append("SUBOPTIMAL")
+            if intervention_flags[t]:
+                status_items.append("HUMAN_INTERVENTION")
+            status_text = " | ".join(status_items) if status_items else "NORMAL"
+            status_color = "red" if len(status_items) > 0 else "green"
+
+            fig.suptitle(
+                f"t={t}/{T-1} | {status_text}",
+                color=status_color,
+                fontsize=14,
+                fontweight="bold",
+            )
+
+            ax_curve.plot(t_axis, returns, color="black", linewidth=2.0, alpha=0.9, label="Discounted Return")
+            ax_curve.plot(t_axis, q_a, color=cm.tab10(0), linewidth=1.6, alpha=0.9, label=f"Q-A ({model_name_a})")
+            ax_curve.plot(t_axis, q_b, color=cm.tab10(1), linewidth=1.6, alpha=0.9, label=f"Q-B ({model_name_b})")
+
+            ax_curve.axvline(t, color="magenta", linestyle="--", linewidth=1.2, alpha=0.85)
+            ax_curve.scatter([t], [returns[t]], color="black", s=30)
+            ax_curve.scatter([t], [q_a[t]], color=cm.tab10(0), s=24)
+            ax_curve.scatter([t], [q_b[t]], color=cm.tab10(1), s=24)
+
+            if suboptimal_flags[t]:
+                ax_curve.axvspan(max(0, t - 0.5), min(T - 1, t + 0.5), color="orange", alpha=0.18)
+            if intervention_flags[t]:
+                ax_curve.axvspan(max(0, t - 0.5), min(T - 1, t + 0.5), color="red", alpha=0.15)
+
+            ax_curve.set_xlim(0, T - 1)
+            ax_curve.set_ylim(y_min, y_max)
+            ax_curve.set_xlabel("Timestep")
+            ax_curve.set_ylabel("Value")
+            ax_curve.set_title("Two-Critic Q Values + Discounted Return")
+            ax_curve.grid(True, alpha=0.3)
+            ax_curve.legend(loc="best", fontsize=9)
+
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
+            fig.canvas.draw()
+
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[1], fig.canvas.get_width_height()[0], 4)
+            frame = frame[:, :, :3]
+            writer.append_data(frame)
+
+    plt.close(fig)
+
+
 # =============================================================================
 # 可视化函数
 # =============================================================================
@@ -272,16 +541,16 @@ def plot_q_comparison(q_dict: Dict[str, np.ndarray],
     ax = axes[0]
     t_steps = np.arange(len(returns))
 
-    ax.plot(t_steps, returns, "k-", linewidth=2, label="实际折现回报", alpha=0.8)
+    ax.plot(t_steps, returns, "k-", linewidth=2, label="Discounted Return", alpha=0.8)
 
     colors = cm.tab10(np.linspace(0, 1, len(q_dict)))
     for (model_name, q_vals), color in zip(q_dict.items(), colors):
-        ax.plot(t_steps, q_vals, "-", linewidth=1.5, label=f"Q值({model_name})", 
+        ax.plot(t_steps, q_vals, "-", linewidth=1.5, label=f"Q ({model_name})", 
                 color=color, alpha=0.7)
 
-    ax.set_xlabel("时间步", fontsize=11)
-    ax.set_ylabel("Q值 / 折现回报", fontsize=11)
-    ax.set_title(f"轨迹 #{trajectory_idx} - Q 值曲线对比", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Timestep", fontsize=11)
+    ax.set_ylabel("Q Value / Discounted Return", fontsize=11)
+    ax.set_title(f"Trajectory #{trajectory_idx} - Q Value Comparison", fontsize=12, fontweight="bold")
     ax.grid(True, alpha=0.3)
     ax.legend(loc="best", fontsize=9)
 
@@ -289,12 +558,12 @@ def plot_q_comparison(q_dict: Dict[str, np.ndarray],
     ax = axes[1]
     for (model_name, q_vals), color in zip(q_dict.items(), colors):
         error = np.abs(q_vals - returns)
-        ax.plot(t_steps, error, "-", linewidth=1.5, label=f"误差({model_name})",
+        ax.plot(t_steps, error, "-", linewidth=1.5, label=f"Error ({model_name})",
                 color=color, alpha=0.7)
 
-    ax.set_xlabel("时间步", fontsize=11)
-    ax.set_ylabel("|Q值 - 实际回报|", fontsize=11)
-    ax.set_title("Q值估计误差", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Timestep", fontsize=11)
+    ax.set_ylabel("|Q - Return|", fontsize=11)
+    ax.set_title("Q Estimation Error", fontsize=12, fontweight="bold")
     ax.grid(True, alpha=0.3)
     ax.legend(loc="best", fontsize=9)
     ax.set_yscale("log")
@@ -329,9 +598,9 @@ def plot_q_statistics(all_results: Dict[str, Dict[int, Dict]],
         maes = [all_results[model_name][j].get("mae", 0) for j in range(n_trajs)]
         ax.bar(x + i * width, maes, width, label=model_name, alpha=0.8)
 
-    ax.set_xlabel("轨迹索引", fontsize=11)
-    ax.set_ylabel("MAE (Q值 - 回报)", fontsize=11)
-    ax.set_title("Q值估计误差（MAE）", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Trajectory Index", fontsize=11)
+    ax.set_ylabel("MAE (Q - Return)", fontsize=11)
+    ax.set_title("Q Estimation Error (MAE)", fontsize=12, fontweight="bold")
     ax.set_xticks(x + width * (n_models - 1) / 2)
     ax.set_xticklabels([f"#{j}" for j in range(n_trajs)])
     ax.legend(fontsize=9)
@@ -343,9 +612,9 @@ def plot_q_statistics(all_results: Dict[str, Dict[int, Dict]],
         rmses = [all_results[model_name][j].get("rmse", 0) for j in range(n_trajs)]
         ax.bar(x + i * width, rmses, width, label=model_name, alpha=0.8)
 
-    ax.set_xlabel("轨迹索引", fontsize=11)
+    ax.set_xlabel("Trajectory Index", fontsize=11)
     ax.set_ylabel("RMSE", fontsize=11)
-    ax.set_title("Q值估计误差（RMSE）", fontsize=12, fontweight="bold")
+    ax.set_title("Q Estimation Error (RMSE)", fontsize=12, fontweight="bold")
     ax.set_xticks(x + width * (n_models - 1) / 2)
     ax.set_xticklabels([f"#{j}" for j in range(n_trajs)])
     ax.legend(fontsize=9)
@@ -415,69 +684,50 @@ def plot_trajectory_images(trajectory: List[Dict],
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="多模型 Q 值评估工具")
-
-    parser.add_argument("--model_paths", nargs="+", required=True,
-                        help="模型 checkpoint 路径列表（空格分隔）")
-    parser.add_argument("--trajectory_paths", nargs="+", required=True,
-                        help="轨迹 pkl 路径列表（空格分隔）")
-    parser.add_argument("--exp_name", required=True,
-                        help="实验名（CONFIG_MAPPING 键）")
-    parser.add_argument("--output_dir", default="./q_evaluation_results",
-                        help="输出目录")
-    parser.add_argument("--n_frames_per_traj", type=int, default=50,
-                        help="每条轨迹保存的图像帧数")
-    parser.add_argument("--ensemble_agg", default="min", choices=["min", "mean"],
-                        help="Q 值聚合方式")
-    parser.add_argument("--use_target_critic", action="store_true",
-                        help="使用 target critic")
-    parser.add_argument("--save_video_samples", action="store_true",
-                        help="保存轨迹图像帧")
-    parser.add_argument("--chunk_size", type=int, default=16,
-                        help="批推理大小")
-    parser.add_argument("--gamma", type=float, default=0.99,
-                        help="折现因子")
+    parser = argparse.ArgumentParser(description="Two-checkpoint single-trajectory Q video generator")
+    parser.add_argument("--checkpoint_a", required=True, help="Path to checkpoint A")
+    parser.add_argument("--checkpoint_b", required=True, help="Path to checkpoint B")
+    parser.add_argument("--trajectory_path", required=True, help="Path to one trajectory pkl")
+    parser.add_argument("--exp_name", required=True, help="Experiment name (CONFIG_MAPPING key)")
+    parser.add_argument("--output_dir", default="./q_video_output", help="Output directory")
+    parser.add_argument("--output_name", default="q_trajectory_video.mp4", help="Output video filename")
+    parser.add_argument("--fps", type=int, default=10, help="Output video fps")
+    parser.add_argument("--ensemble_agg", default="min", choices=["min", "mean"], help="Q ensemble aggregation")
+    parser.add_argument("--use_target_critic", action="store_true", help="Use target critic")
+    parser.add_argument("--chunk_size", type=int, default=16, help="Inference chunk size")
+    parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
     parser.add_argument("--seed", type=int, default=42)
-
     args = parser.parse_args()
 
-    # ── 路径检查与标准化 ────────────────────────────────────────
-    model_paths = [os.path.abspath(p) for p in args.model_paths]
-    trajectory_paths = [os.path.abspath(p) for p in args.trajectory_paths]
+    if args.exp_name not in CONFIG_MAPPING:
+        raise ValueError(f"exp_name '{args.exp_name}' is not in CONFIG_MAPPING")
+
+    checkpoint_a = os.path.abspath(args.checkpoint_a)
+    checkpoint_b = os.path.abspath(args.checkpoint_b)
+    trajectory_path = os.path.abspath(args.trajectory_path)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    print(f"\n{'='*70}")
-    print(f"多模型 Q 值评估工具")
-    print(f"{'='*70}")
-    print(f"[输入] 模型数={len(model_paths)}, 轨迹数={len(trajectory_paths)}")
-    print(f"[输出] {args.output_dir}")
-    print()
+    print("=" * 80)
+    print("Two-checkpoint Q video generation")
+    print("=" * 80)
+    print(f"[Input] checkpoint_a={checkpoint_a}")
+    print(f"[Input] checkpoint_b={checkpoint_b}")
+    print(f"[Input] trajectory={trajectory_path}")
 
-    # ── 加载配置与环境 ──────────────────────────────────────────
-    assert args.exp_name in CONFIG_MAPPING, \
-        f"exp_name '{args.exp_name}' 不在 CONFIG_MAPPING 中"
     config = CONFIG_MAPPING[args.exp_name]()
     setup_mode = config.setup_mode
     image_keys = list(config.image_keys)
     fix_gripper = "fixed-gripper" in setup_mode
 
-    print(f"[配置] exp_name={args.exp_name}")
-    print(f"       setup_mode={setup_mode}")
-    print(f"       image_keys={image_keys}")
-    print(f"       fix_gripper={fix_gripper}")
-    print()
+    print(f"[Config] exp_name={args.exp_name}")
+    print(f"[Config] setup_mode={setup_mode}")
+    print(f"[Config] image_keys={image_keys}")
 
-    # ── 加载轨迹数据 ────────────────────────────────────────────
-    print(f"[轨迹] 正在加载 {len(trajectory_paths)} 条轨迹...")
-    trajectories = []
-    for traj_path in trajectory_paths:
-        traj = load_trajectory_from_pkl(traj_path)
-        trajectories.append(traj)
-    print(f"  共加载 {len(trajectories)} 条轨迹")
-    print()
+    trajectory = load_trajectory_from_pkl(trajectory_path)
+    if len(trajectory) == 0:
+        raise ValueError("Trajectory is empty")
 
-    # ── 构建 dummy 环境 ──────────────────────────────────────────
-    print("[环境] 初始化环境以获取 obs/action 形状...")
+    print("[Env] Build fake environment for sample spaces...")
     env = config.get_environment(
         fake_env=True,
         save_video=False,
@@ -486,119 +736,77 @@ def main():
     )
     sample_obs = env.observation_space.sample()
     sample_action = env.action_space.sample()
-    
-    # 安全关闭环境（可能不完全初始化）
     try:
         env.close()
     except Exception as e:
-        print(f"  [警告] 环境关闭失败（非致命）: {type(e).__name__}")
-    
-    print(f"  ✓ obs_space={sample_obs.keys()}, action_space={sample_action.shape}")
-    print()
+        print(f"[Warning] env.close() failed (non-fatal): {type(e).__name__}")
 
-    # ── 逐模型加载 agent ────────────────────────────────────────
-    print(f"[模型] 加载 {len(model_paths)} 个 checkpoint...")
-    agents = {}
+    print("[Model] Loading checkpoint A...")
+    agent_a = load_agent_from_checkpoint(checkpoint_a, config, sample_obs, sample_action, args.seed)
+    print("[Model] Loading checkpoint B...")
+    agent_b = load_agent_from_checkpoint(checkpoint_b, config, sample_obs, sample_action, args.seed)
+
+    model_name_a = Path(checkpoint_a).parent.name + "/" + Path(checkpoint_a).name
+    model_name_b = Path(checkpoint_b).parent.name + "/" + Path(checkpoint_b).name
+
+    obs_batch = build_obs_batch(trajectory, image_keys)
+    actions = np.stack([tr["actions"] for tr in trajectory], axis=0)
+    rewards = np.array([tr.get("rewards", 0.0) for tr in trajectory], dtype=np.float32)
+    dones = np.array([tr.get("dones", False) for tr in trajectory], dtype=np.float32)
+
     rng = jax.random.PRNGKey(args.seed)
+    rng, key_a = jax.random.split(rng)
+    rng, key_b = jax.random.split(rng)
 
-    for model_path in model_paths:
-        try:
-            agent = load_agent_from_checkpoint(
-                model_path, config,
-                sample_obs, sample_action,
-                seed=args.seed,
-            )
-            model_name = os.path.basename(model_path)
-            agents[model_name] = agent
-        except Exception as e:
-            print(f"  ✗ 加载 {model_path} 失败: {e}")
-            continue
+    print("[Inference] Estimating Q for checkpoint A...")
+    q_a = estimate_q_values(
+        agent_a, obs_batch, actions, key_a,
+        use_target=args.use_target_critic,
+        ensemble_agg=args.ensemble_agg,
+        fix_gripper=fix_gripper,
+        chunk_size=args.chunk_size,
+    )
+    print("[Inference] Estimating Q for checkpoint B...")
+    q_b = estimate_q_values(
+        agent_b, obs_batch, actions, key_b,
+        use_target=args.use_target_critic,
+        ensemble_agg=args.ensemble_agg,
+        fix_gripper=fix_gripper,
+        chunk_size=args.chunk_size,
+    )
 
-    print(f"  ✓ 成功加载 {len(agents)} 个模型")
-    print()
+    returns = compute_discounted_returns(rewards, dones, gamma=args.gamma)
 
-    # ── 逐轨迹、逐模型评估 Q 值 ─────────────────────────────────
-    print(f"[推理] 评估 {len(trajectories)} 条轨迹的 Q 值...")
-    all_results = {model_name: {} for model_name in agents.keys()}
+    suboptimal_flags = extract_suboptimal_flags(trajectory)
+    intervention_flags = extract_intervention_flags(trajectory)
 
-    for traj_idx, trajectory in enumerate(trajectories):
-        print(f"\n  轨迹 #{traj_idx} (长度={len(trajectory)}):")
+    print(f"[Marker] suboptimal frames: {int(suboptimal_flags.sum())}/{len(suboptimal_flags)}")
+    print(f"[Marker] intervention frames: {int(intervention_flags.sum())}/{len(intervention_flags)}")
 
-        # 提取 observations, actions, rewards, dones
-        obs_batch = build_obs_batch(trajectory, image_keys)
-        actions = np.stack([tr["actions"] for tr in trajectory], axis=0)
-        rewards = np.array([tr.get("rewards", 0) for tr in trajectory])
-        dones = np.array([tr.get("dones", False) for tr in trajectory])
+    first_obs = trajectory[0]["observations"]
+    wrist_key, third_key = resolve_camera_keys(first_obs, image_keys)
+    print(f"[Camera] wrist={wrist_key}, third={third_key}")
 
-        # 计算真实折现回报
-        returns = compute_discounted_returns(rewards, dones, gamma=args.gamma)
+    output_video_path = os.path.join(args.output_dir, args.output_name)
+    print(f"[Render] Writing video to {output_video_path} ...")
+    make_overlay_video(
+        trajectory=trajectory,
+        wrist_key=wrist_key,
+        third_key=third_key,
+        q_a=q_a,
+        q_b=q_b,
+        returns=returns,
+        model_name_a=model_name_a,
+        model_name_b=model_name_b,
+        suboptimal_flags=suboptimal_flags,
+        intervention_flags=intervention_flags,
+        output_video_path=output_video_path,
+        fps=args.fps,
+    )
 
-        # 逐模型评估
-        q_dict = {}
-        for model_name, agent in agents.items():
-            rng, key = jax.random.split(rng)
-            q_vals = estimate_q_values(
-                agent, obs_batch, actions, key,
-                use_target=args.use_target_critic,
-                ensemble_agg=args.ensemble_agg,
-                fix_gripper=fix_gripper,
-                chunk_size=args.chunk_size,
-            )
-            q_dict[model_name] = q_vals
-
-            # 计算指标
-            mae = np.mean(np.abs(q_vals - returns))
-            rmse = np.sqrt(np.mean((q_vals - returns) ** 2))
-            pearson_r = np.corrcoef(q_vals, returns)[0, 1]
-
-            all_results[model_name][traj_idx] = {
-                "mae": mae,
-                "rmse": rmse,
-                "pearson_r": pearson_r,
-                "mean_q": q_vals.mean(),
-                "mean_return": returns.mean(),
-            }
-
-            print(f"    {model_name:30s} | "
-                  f"MAE={mae:7.4f} RMSE={rmse:7.4f} R={pearson_r:6.3f}")
-
-        # ── 可视化：Q 值对比曲线 ────────────────────────────────
-        plot_q_comparison(q_dict, returns, traj_idx, args.output_dir, 
-                         gamma=args.gamma)
-
-        # ── 可视化：轨迹图像帧 ──────────────────────────────────
-        if args.save_video_samples:
-            # 自动检测图像键
-            img_key = None
-            first_obs = trajectory[0].get("observations", {})
-            for k in first_obs.keys():
-                if "rgb" in k.lower():
-                    img_key = k
-                    break
-
-            if img_key:
-                plot_trajectory_images(trajectory, traj_idx, args.output_dir,
-                                      n_frames=args.n_frames_per_traj,
-                                      image_key=img_key)
-
-    print(f"\n{'='*70}")
-
-    # ── 汇总统计 ────────────────────────────────────────────────
-    print("\n[汇总] 所有轨迹的平均指标:")
-    for model_name in agents.keys():
-        metrics_list = all_results[model_name].values()
-        avg_mae = np.mean([m["mae"] for m in metrics_list])
-        avg_rmse = np.mean([m["rmse"] for m in metrics_list])
-        avg_r = np.mean([m["pearson_r"] for m in metrics_list])
-        print(f"  {model_name:30s} | "
-              f"avg_MAE={avg_mae:7.4f} avg_RMSE={avg_rmse:7.4f} avg_R={avg_r:6.3f}")
-
-    # ── 统计可视化 ──────────────────────────────────────────────
-    if len(agents) > 1 or len(trajectories) > 1:
-        plot_q_statistics(all_results, args.output_dir)
-
-    print(f"\n✓ 评估完成，所有结果已保存至: {args.output_dir}")
-    print(f"{'='*70}\n")
+    print("=" * 80)
+    print(f"Done. Video saved to: {output_video_path}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
