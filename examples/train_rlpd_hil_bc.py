@@ -608,10 +608,14 @@ def main(_):
 
     assert FLAGS.exp_name in CONFIG_MAPPING, "Experiment folder not found."
 
+    use_classifier = bool(getattr(config, "classifier_keys", []))
+    if not use_classifier:
+        print_green("[Env] classifier_keys 为空，已自动关闭 reward classifier wrapper。")
+
     env = config.get_environment(
         fake_env=FLAGS.learner,
         save_video=FLAGS.save_video,
-        classifier=True,
+        classifier=use_classifier,
         stack_obs_num=2,
     )
     env = RecordEpisodeStatistics(env)

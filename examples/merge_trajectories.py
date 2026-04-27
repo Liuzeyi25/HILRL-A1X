@@ -5,8 +5,8 @@
 使用方法：
    cd /home/dungeon_master/conrft/examples/
    python merge_trajectories.py \
-       /home/dungeon_master/conrft/examples/experiments/wipe_whiteboard/demo_data/20260222 \
-       /home/dungeon_master/conrft/examples/experiments/wipe_whiteboard/demo_data/20260222/traj_20.pkl 
+       //home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260427 \
+       //home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260427/traj_20.pkl 
 
 """
 import pickle as pkl
