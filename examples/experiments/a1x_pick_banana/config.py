@@ -150,7 +150,7 @@ class TrainConfig(DefaultTrainingConfig):
     action_chunk_size = None # 一次输出4个连续的动作（滚动窗口）
     
     # Task description (用于语言条件化策略)
-    task_desc = "Pick up the banana"
+    task_desc = "Pick up the eggplant and place on the plate"
     
     # Octo model path (如果使用预训练模型)
     # octo_path = "/home/luka/Haoyuan/Safevla_RL/octo_model/octo-small-1.5"

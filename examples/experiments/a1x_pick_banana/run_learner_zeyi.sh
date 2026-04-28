@@ -1,4 +1,4 @@
-RUN_TAG=${RUN_TAG:-"0427_1_multi-bc"}
+RUN_TAG=${RUN_TAG:-"0428_2_multi-bc"}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5
@@ -11,8 +11,8 @@ export WANDB_ENTITY=liuzeyicsu-central-south-university
 # 有 Progress Model 时：
 python ../../train_rlpd_hil_bc.py \
     --exp_name=a1x_pick_banana \
-    --checkpoint_path=experiments/a1x_pick_banana/checkpoints_hil/${RUN_TAG} \
-    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/0427/traj_20.pkl \
+    --checkpoint_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/checkpoints_hil/${RUN_TAG} \
+    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260427/traj_20.pkl \
     --learner \
     --run_tag="${RUN_TAG}" \
     --alpha_lambda=3.0 \
