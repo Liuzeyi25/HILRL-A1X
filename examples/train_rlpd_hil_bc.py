@@ -679,6 +679,7 @@ def main(_):
             image_keys=config.image_keys,
             include_alpha_correction=True,
             include_segment_ids=True,
+            include_grasp_penalty=include_grasp_penalty,
         )
         _wandb_desc = (
             f"{FLAGS.exp_name}_bc_{FLAGS.run_tag}" if FLAGS.run_tag
@@ -703,6 +704,7 @@ def main(_):
             image_keys=config.image_keys,
             include_alpha_correction=True,
             include_segment_ids=True,
+            include_grasp_penalty=include_grasp_penalty,
         )
 
         preference_buffer = PreferenceBufferDataStore(capacity=10000)
@@ -730,6 +732,8 @@ def main(_):
                     for transition in pickle.load(f):
                         transition.setdefault("alpha_weight", 0.0)
                         transition.setdefault("segment_ids", -1)
+                        if include_grasp_penalty:
+                            transition.setdefault("grasp_penalty", 0.0)
                         replay_buffer.insert(transition)
             print_green(f"Loaded previous buffer. Replay buffer size: {len(replay_buffer)}")
 
@@ -744,6 +748,8 @@ def main(_):
                     for transition in pickle.load(f):
                         transition.setdefault("alpha_weight", 0.0)
                         transition.setdefault("segment_ids", -1)
+                        if include_grasp_penalty:
+                            transition.setdefault("grasp_penalty", 0.0)
                         demo_buffer.insert(transition)
             print_green(f"Loaded previous demo buffer. Demo buffer size: {len(demo_buffer)}")
 
