@@ -34,7 +34,7 @@ import flax.linen as nn
 from absl import app, flags
 from flax import config as flax_config
 from flax.training import checkpoints
-from gymnasium.wrappers.record_episode_statistics import RecordEpisodeStatistics
+from gymnasium.wrappers import RecordEpisodeStatistics
 from natsort import natsorted
 
 flax_config.update('flax_use_orbax_checkpointing', False)

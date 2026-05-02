@@ -25,34 +25,35 @@ COV_Q_LOW=${COV_Q_LOW:-0.05}
 COV_Q_HIGH=${COV_Q_HIGH:-0.90}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
-export XLA_PYTHON_CLIENT_MEM_FRACTION=.5
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.3
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
-EXTRA_ARGS=()
-if [ -n "$SAMPLING_KWARGS" ]; then
-    EXTRA_ARGS+=("--sampling_strategy_kwargs=${SAMPLING_KWARGS}")
-fi
-if [ "$USE_COV_ACTOR_LOSS" = "true" ]; then
-    EXTRA_ARGS+=("--use_cov_actor_loss" "--cov_K=${COV_K}" "--cov_q_low=${COV_Q_LOW}" "--cov_q_high=${COV_Q_HIGH}")
-fi
+# EXTRA_ARGS=()
+# if [ -n "$SAMPLING_KWARGS" ]; then
+#     EXTRA_ARGS+=("--sampling_strategy_kwargs=${SAMPLING_KWARGS}")
+# fi
+# EXTRA_ARGS=("--sampling_strategy_kwargs=${SAMPLING_KWARGS}")
+# if [ "$USE_COV_ACTOR_LOSS" = "true" ]; then
+#     EXTRA_ARGS+=("--use_cov_actor_loss" "--cov_K=${COV_K}" "--cov_q_low=${COV_Q_LOW}" "--cov_q_high=${COV_Q_HIGH}")
+# fi
 
 # ---- 自动构建 run tag: <sampling>__<cov_or_nocov>__<timestamp> ----
 # 若外部已传入 RUN_TAG（用于续训），则跳过自动生成
-if [ -z "${RUN_TAG}" ]; then
-    TIMESTAMP=$(date +%m%d_%H%M%S)
-    if [ "$USE_COV_ACTOR_LOSS" = "true" ]; then
-        COV_LABEL="cov_K${COV_K}"
-    else
-        COV_LABEL="nocov"
-    fi
-    RUN_TAG="${SAMPLING_STRATEGY}__${COV_LABEL}__${TIMESTAMP}"
-fi
+# if [ -z "${RUN_TAG}" ]; then
+#     TIMESTAMP=$(date +%m%d_%H%M%S)
+#     if [ "$USE_COV_ACTOR_LOSS" = "true" ]; then
+#         COV_LABEL="cov_K${COV_K}"
+#     else
+#         COV_LABEL="nocov"
+#     fi
+#     RUN_TAG="${SAMPLING_STRATEGY}__${COV_LABEL}__${TIMESTAMP}"
+# fi
+
+RUN_TAG="hilserl-0422_1"
 
 python ../../train_rlpd.py "$@" \
     --exp_name=a1x_pick_banana \
-    --checkpoint_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/hilserl/${RUN_TAG} \
-    --demo_path=/home/dungeon_master/conrft/examples/experiments/a1x_pick_banana/demo_data/20260301/traj_10.pkl \
+    --checkpoint_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/hilserl/${RUN_TAG} \
+    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260421/all_demos_merged.pkl \
     --learner \
-    --run_tag="${RUN_TAG}" \
-    --sampling_strategy="${SAMPLING_STRATEGY}" \
-    "${EXTRA_ARGS[@]}"
+    --run_tag="${RUN_TAG}"

@@ -1,4 +1,4 @@
-RUN_TAG=${RUN_TAG:-"0428_2_multi-bc"}
+RUN_TAG=${RUN_TAG:-"0502_1_multi-bc"}
 
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.5
@@ -12,13 +12,13 @@ export WANDB_ENTITY=liuzeyicsu-central-south-university
 python ../../train_rlpd_hil_bc.py \
     --exp_name=a1x_pick_banana \
     --checkpoint_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/checkpoints_hil/${RUN_TAG} \
-    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260427/traj_20.pkl \
+    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/demo_data/20260429/traj_20.pkl \
     --learner \
     --run_tag="${RUN_TAG}" \
     --alpha_lambda=3.0 \
     --contrastive_coef=1 \
     --preference_batch_size=4 \
     --suboptimal_window=5 \
-    --progress_model_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/progress_model/exp_004_20260427_2053//progress_model_best.pt \
-    --state_stats_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/progress_model/exp_004_20260427_2053/state_stats.pt \
+    --progress_model_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/progress_model/exp_006_20260429_1046//progress_model_best.pt \
+    --state_stats_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/a1x_pick_banana/progress_model/exp_006_20260429_1046/state_stats.pt \
     --bc_post_steps=5
