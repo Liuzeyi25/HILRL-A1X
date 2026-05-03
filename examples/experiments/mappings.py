@@ -8,6 +8,8 @@ from experiments.wipe_whiteboard.config import TrainConfig as WipeWhiteboardTrai
 from experiments.toast_bread.config import TrainConfig as ToastBreadTrainConfig
 from experiments.pour_water.config import TrainConfig as pourwaterTrainConfig
 from experiments.press_button.config import TrainConfig as pressbuttonTrainConfig
+from experiments.pick_banana.config import TrainConfig as PickBananaTrainConfig
+
 
 
 CONFIG_MAPPING = {
@@ -22,4 +24,5 @@ CONFIG_MAPPING = {
     "pour_water": pourwaterTrainConfig,
     "press_button": pressbuttonTrainConfig,
     "take_out_bread": ToastBreadTrainConfig,
+    "pick_banana": PickBananaTrainConfig,
 }

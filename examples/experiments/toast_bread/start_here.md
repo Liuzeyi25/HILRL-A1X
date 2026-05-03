@@ -35,9 +35,9 @@ conda activate conrft
 执行：
 ```bash
 python /home/dungeon_master/liuzeyi/HILRL-A1X/examples/record_demos_octo_manual_new.py \
-    --exp_name toast_bread \  # 实验名称（路径会自动映射到 experiments/toast_bread/）
-    --successes_needed 20 \  # 需要采集的成功 demo 数量
-    --demo_data_subdir $(date +%Y%m%d)  # demo 数据存放子目录
+    --exp_name toast_bread \ 
+    --successes_needed 20 \ 
+    --demo_data_subdir $(date +%Y%m%d)
 ```
 
 补充说明：

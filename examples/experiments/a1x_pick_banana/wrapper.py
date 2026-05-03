@@ -61,6 +61,26 @@ class A1XTaskEnv(A1XEnv):
 
     def step(self, action: np.ndarray):
         """Override step to add task-specific logic if needed."""
+        action = np.asarray(action, dtype=np.float32)
+        action = action.copy()
+
+        # 仅对 pick_banana 任务裁剪夹爪动作范围到 2-70mm
+        gripper_low_mm = 2.0
+        gripper_high_mm = 70.0
+        try:
+            if hasattr(self, "config") and hasattr(self.config, "JOINT_LIMIT_LOW"):
+                gripper_low_mm = float(self.config.JOINT_LIMIT_LOW[6])
+                gripper_high_mm = float(self.config.JOINT_LIMIT_HIGH[6])
+        except Exception:
+            pass
+
+        scale = float(self.action_scale[6]) if self.action_scale is not None else 0.0
+        if scale != 0.0 and hasattr(self, "curr_ee_pos_rot_gripper"):
+            current_gripper = float(self.curr_ee_pos_rot_gripper[6])
+            target = np.clip(current_gripper + float(action[6]) * scale, 0.0, 1.0)
+            target = np.clip(target, gripper_low_mm / 100.0, gripper_high_mm / 100.0)
+            action[6] = (target - current_gripper) / scale
+
         obs, reward, done, truncated, info = super().step(action)
         
         # 添加任务特定的成功检测

@@ -49,11 +49,11 @@ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 #     RUN_TAG="${SAMPLING_STRATEGY}__${COV_LABEL}__${TIMESTAMP}"
 # fi
 
-RUN_TAG="hilserl-0422_1"
+RUN_TAG="hilserl-0503-1"
 
 python ../../train_rlpd.py "$@" \
     --exp_name=toast_bread \
-    --checkpoint_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/toast_bread/hilserl/${RUN_TAG} \
-    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/toast_bread/demo_data/20260421/all_demos_merged.pkl \
+    --checkpoint_path=hilserl/${RUN_TAG} \
+    --demo_path=/home/dungeon_master/liuzeyi/HILRL-A1X/examples/experiments/toast_bread/demo_data/20260430/traj_20.pkl \
     --learner \
     --run_tag="${RUN_TAG}"
